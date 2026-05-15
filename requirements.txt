@@ -1,4 +1,5 @@
 fpdf2
 python-dotenv
-playwright
 markdown
+customtkinter
+packaging
