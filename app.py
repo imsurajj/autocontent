@@ -1,21 +1,53 @@
 import os
 import re
+import sys
 import json
+import hashlib
 import threading
+import urllib.request
+import webbrowser
 import tkinter as tk
+from datetime import datetime, timedelta
 from pathlib import Path
 from tkinter import filedialog, messagebox
 import customtkinter as ctk
+from PIL import Image
 from fpdf import FPDF
 from markdown import markdown
 
 # Initialize environment
-BASE_DIR = Path(__file__).resolve().parent
-SETTINGS_FILE = BASE_DIR / "settings.json"
+def get_resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+if getattr(sys, 'frozen', False):
+    EXE_DIR = Path(sys.executable).parent
+else:
+    EXE_DIR = Path(__file__).resolve().parent
+
+SETTINGS_FILE = EXE_DIR / "settings.json"
+LICENSE_FILE = EXE_DIR / "license.key"
+LOGO_PATH = get_resource_path(os.path.join("image", "logo.png"))
+ICON_PATH = get_resource_path(os.path.join("image", "logo.ico"))
+
+# App Meta
+APP_VERSION = "1.0.0"
+VERSION_URL = "https://raw.githubusercontent.com/imsurajj/autocontent/main/version.json"
+
+# Security Config (Pro Hashing)
+KEY_HASH = "938b81665a363a992be769b7f520775ca4640103194a0852e61c37b03657743d"
+LICENSE_DURATION_DAYS = 30
+
+# Placeholders
+CONTENT_PLACEHOLDER = "# Main Header\n\nWrite your content here using Markdown syntax.\n\n## Sub-section\n- List Item 1\n- List Item 2"
+TITLES_PLACEHOLDER = "Example Title 1\nExample Title 2\nExample Title 3"
 
 # Default fallback settings
 DEFAULT_SETTINGS = {
-    "output_folder": str(BASE_DIR / "output_pdfs"),
+    "output_folder": str(EXE_DIR / "output_pdfs"),
     "prefix": "doc",
     "start_num": "1",
     "appearance_mode": "Dark",
@@ -27,27 +59,117 @@ class AutoContentPro(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        # Load "Cookies" (Settings)
-        self.settings = self.load_settings()
-
-        self.title("AutoContent Pro — Ultimate Batch Engine")
+        self.title(f"AutoContent Pro — Ultimate Engine v{APP_VERSION}")
         self.geometry("1100x750")
         
-        # Grid layout
-        self.grid_columnconfigure(1, weight=1)
+        try:
+            if os.path.exists(ICON_PATH):
+                self.iconbitmap(ICON_PATH)
+        except:
+            pass
+
+        self.settings = self.load_settings()
+        self.appearance_mode = tk.StringVar(value=self.settings.get("appearance_mode"))
+        ctk.set_appearance_mode(self.appearance_mode.get())
+
+        self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # Variables
+        self.check_license()
+
+    def check_license(self):
+        is_valid = False
+        if LICENSE_FILE.exists():
+            try:
+                with open(LICENSE_FILE, "r") as f:
+                    data = json.load(f)
+                    activation_date_str = data.get("date", "")
+                    if "T" in activation_date_str:
+                        activation_date = datetime.fromisoformat(activation_date_str)
+                    else:
+                        activation_date = datetime.strptime(activation_date_str, "%Y-%m-%d")
+                    
+                    if datetime.now() < activation_date + timedelta(days=LICENSE_DURATION_DAYS):
+                        is_valid = True
+            except:
+                pass
+        
+        if is_valid:
+            self.show_main_app()
+            threading.Thread(target=self.check_for_updates, daemon=True).start()
+        else:
+            self.show_activation_screen()
+
+    def check_for_updates(self):
+        try:
+            with urllib.request.urlopen(VERSION_URL, timeout=5) as response:
+                data = json.loads(response.read().decode())
+                latest_version = data.get("version", APP_VERSION)
+                update_url = data.get("url", "")
+                if latest_version > APP_VERSION:
+                    self.after(0, lambda: self.notify_update(latest_version, update_url))
+        except:
+            pass
+
+    def notify_update(self, version, url):
+        self.log(f"🔔 UPDATE AVAILABLE: v{version}")
+        msg = f"A new version (v{version}) is available!\nWould you like to download it now?"
+        if messagebox.askyesno("Update Available", msg):
+            webbrowser.open(url)
+
+    def show_activation_screen(self):
+        for child in self.winfo_children():
+            child.destroy()
+
+        self.activation_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.activation_frame.grid(row=0, column=0, sticky="nsew")
+        self.activation_frame.grid_columnconfigure(0, weight=1)
+        self.activation_frame.grid_rowconfigure(0, weight=1)
+
+        container = ctk.CTkFrame(self.activation_frame, fg_color="transparent")
+        container.grid(row=0, column=0)
+
+        ctk.CTkLabel(container, text="🛡️", font=ctk.CTkFont(size=80)).pack(pady=(0, 20))
+        ctk.CTkLabel(container, text="Activation Required", font=ctk.CTkFont(size=32, weight="bold")).pack(pady=5)
+        ctk.CTkLabel(container, text="Your license is missing or has expired.\nEnter your key to unlock the Ultimate Engine.", 
+                    font=ctk.CTkFont(size=14), text_color="gray70").pack(pady=(5, 30))
+        
+        self.key_entry = ctk.CTkEntry(container, placeholder_text="Enter Key...", 
+                                     show="*", width=380, height=50, 
+                                     font=ctk.CTkFont(family="Consolas", size=16),
+                                     border_width=1, corner_radius=12)
+        self.key_entry.pack(pady=10)
+        self.key_entry.bind("<Return>", lambda e: self.verify_license())
+        
+        self.activate_btn = ctk.CTkButton(container, text="ACTIVATE NOW", command=self.verify_license, 
+                                         fg_color="#3B8ED0", hover_color="#2B6DA0", 
+                                         height=55, width=300, font=ctk.CTkFont(size=16, weight="bold"),
+                                         corner_radius=15)
+        self.activate_btn.pack(pady=(25, 0))
+
+    def verify_license(self):
+        user_key = "".join(self.key_entry.get().split())
+        user_hash = hashlib.sha256(user_key.encode()).hexdigest()
+        
+        if user_hash == KEY_HASH:
+            with open(LICENSE_FILE, "w") as f:
+                json.dump({"date": datetime.now().isoformat(), "key": "VALIDATED"}, f)
+            self.show_main_app()
+            threading.Thread(target=self.check_for_updates, daemon=True).start()
+        else:
+            messagebox.showerror("Error", "Invalid License Key! Please try again.")
+
+    def show_main_app(self):
+        for child in self.winfo_children():
+            child.destroy()
+        self.grid_columnconfigure(0, weight=0)
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
         self.output_folder = tk.StringVar(value=self.settings.get("output_folder"))
         self.prefix = tk.StringVar(value=self.settings.get("prefix"))
         self.start_num = tk.StringVar(value=self.settings.get("start_num"))
-        self.appearance_mode = tk.StringVar(value=self.settings.get("appearance_mode"))
-
         self.setup_ui()
         self.restore_work()
-        
-        # Set theme
-        ctk.set_appearance_mode(self.appearance_mode.get())
 
     def load_settings(self):
         if SETTINGS_FILE.exists():
@@ -59,107 +181,93 @@ class AutoContentPro(ctk.CTk):
         return DEFAULT_SETTINGS
 
     def save_settings(self):
-        # Gather current state
+        if not hasattr(self, 'content_text'):
+            return
+        content = self.content_text.get("1.0", "end-1c")
+        if content == CONTENT_PLACEHOLDER:
+            content = ""
+        titles = self.titles_text.get("1.0", "end-1c")
+        if titles == TITLES_PLACEHOLDER:
+            titles = ""
         current_data = {
             "output_folder": self.output_folder.get(),
             "prefix": self.prefix.get(),
             "start_num": self.start_num.get(),
             "appearance_mode": self.appearance_mode.get(),
-            "content": self.content_text.get("1.0", "end-1c"),
-            "titles": self.titles_text.get("1.0", "end-1c")
+            "content": content,
+            "titles": titles
         }
         with open(SETTINGS_FILE, "w") as f:
             json.dump(current_data, f, indent=4)
 
     def setup_ui(self):
-        # --- SIDEBAR ---
         self.sidebar_frame = ctk.CTkFrame(self, width=220, corner_radius=0)
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
         self.sidebar_frame.grid_rowconfigure(5, weight=1)
-
-        self.logo_label = ctk.CTkLabel(self.sidebar_frame, text="⚡ AutoContent", 
-                                      font=ctk.CTkFont(size=22, weight="bold"))
-        self.logo_label.grid(row=0, column=0, padx=20, pady=(30, 0))
-        
-        self.sub_logo = ctk.CTkLabel(self.sidebar_frame, text="PRO EDITION", 
-                                    font=ctk.CTkFont(size=10, weight="bold"), text_color="#3B8ED0")
-        self.sub_logo.grid(row=1, column=0, padx=20, pady=(0, 30))
-
-        self.generate_btn = ctk.CTkButton(self.sidebar_frame, text="GENERATE NOW", 
-                                         command=self.start_generation, height=50,
-                                         corner_radius=10, font=ctk.CTkFont(size=15, weight="bold"),
-                                         fg_color="#3B8ED0", hover_color="#2B6DA0")
-        self.generate_btn.grid(row=2, column=0, padx=20, pady=10, sticky="ew")
-
-        self.status_badge = ctk.CTkLabel(self.sidebar_frame, text="● SYSTEM READY", 
-                                        font=ctk.CTkFont(size=10, weight="bold"), text_color="#2ECC71")
-        self.status_badge.grid(row=3, column=0, padx=20, pady=5)
-
-        self.mode_label = ctk.CTkLabel(self.sidebar_frame, text="Appearance:", anchor="w")
-        self.mode_label.grid(row=6, column=0, padx=20, pady=(10, 0))
-        self.mode_menu = ctk.CTkOptionMenu(self.sidebar_frame, values=["Light", "Dark", "System"],
-                                          variable=self.appearance_mode, command=self.change_appearance_mode)
+        try:
+            logo_img = Image.open(LOGO_PATH)
+            self.logo_image = ctk.CTkImage(logo_img, size=(70, 70))
+            ctk.CTkLabel(self.sidebar_frame, image=self.logo_image, text="").grid(row=0, column=0, padx=20, pady=(30, 0))
+        except:
+            ctk.CTkLabel(self.sidebar_frame, text="⚡", font=ctk.CTkFont(size=40)).grid(row=0, column=0, padx=20, pady=(30, 0))
+        ctk.CTkLabel(self.sidebar_frame, text="AutoContent Pro", font=ctk.CTkFont(size=20, weight="bold")).grid(row=1, column=0, padx=20, pady=(10, 0))
+        ctk.CTkLabel(self.sidebar_frame, text="ULTIMATE EDITION", font=ctk.CTkFont(size=10, weight="bold"), text_color="#3B8ED0").grid(row=2, column=0, padx=20, pady=(0, 20))
+        self.generate_btn = ctk.CTkButton(self.sidebar_frame, text="GENERATE NOW", command=self.start_generation, height=50, corner_radius=10, font=ctk.CTkFont(size=15, weight="bold"), fg_color="#3B8ED0", hover_color="#2B6DA0")
+        self.generate_btn.grid(row=3, column=0, padx=20, pady=10, sticky="ew")
+        self.status_badge = ctk.CTkLabel(self.sidebar_frame, text="● SYSTEM READY", font=ctk.CTkFont(size=10, weight="bold"), text_color="#2ECC71")
+        self.status_badge.grid(row=4, column=0, padx=20, pady=5)
+        self.mode_menu = ctk.CTkOptionMenu(self.sidebar_frame, values=["Light", "Dark", "System"], variable=self.appearance_mode, command=self.change_appearance_mode)
         self.mode_menu.grid(row=7, column=0, padx=20, pady=(10, 20))
-
-        # --- MAIN ---
         self.main_container = ctk.CTkFrame(self, fg_color="transparent")
         self.main_container.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
         self.main_container.grid_columnconfigure(0, weight=1)
         self.main_container.grid_rowconfigure(1, weight=1)
-
         self.tabview = ctk.CTkTabview(self.main_container, corner_radius=15)
         self.tabview.grid(row=1, column=0, sticky="nsew")
-        
         self.tab_editor = self.tabview.add("📝 CONTENT EDITOR")
         self.tab_settings = self.tabview.add("⚙️ GLOBAL SETTINGS")
         self.tab_console = self.tabview.add("🖥️ SYSTEM CONSOLE")
-
-        # Editor
         self.tab_editor.grid_columnconfigure(0, weight=1)
         self.tab_editor.grid_columnconfigure(1, weight=1)
         self.tab_editor.grid_rowconfigure(1, weight=1)
-
-        ctk.CTkLabel(self.tab_editor, text="Body Content (Markdown)", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=10, pady=(10, 0), sticky="w")
-        ctk.CTkLabel(self.tab_editor, text="Title List (One Per Line)", font=ctk.CTkFont(weight="bold")).grid(row=0, column=1, padx=10, pady=(10, 0), sticky="w")
-
         self.content_text = ctk.CTkTextbox(self.tab_editor, corner_radius=10, undo=True)
         self.content_text.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
-
+        self.content_text.bind("<FocusIn>", lambda e: self.clear_placeholder(self.content_text, CONTENT_PLACEHOLDER))
+        self.content_text.bind("<FocusOut>", lambda e: self.add_placeholder(self.content_text, CONTENT_PLACEHOLDER))
         self.titles_text = ctk.CTkTextbox(self.tab_editor, corner_radius=10, undo=True)
         self.titles_text.grid(row=1, column=1, padx=10, pady=10, sticky="nsew")
-
-        # Settings
+        self.titles_text.bind("<FocusIn>", lambda e: self.clear_placeholder(self.titles_text, TITLES_PLACEHOLDER))
+        self.titles_text.bind("<FocusOut>", lambda e: self.add_placeholder(self.titles_text, TITLES_PLACEHOLDER))
         self.tab_settings.grid_columnconfigure(0, weight=1)
         settings_card = ctk.CTkFrame(self.tab_settings, corner_radius=15)
         settings_card.pack(fill="x", padx=20, pady=20)
-        
         row1 = ctk.CTkFrame(settings_card, fg_color="transparent")
         row1.pack(fill="x", padx=20, pady=15)
-        ctk.CTkLabel(row1, text="Filename Prefix:").pack(side="left", padx=(0, 10))
-        ctk.CTkEntry(row1, textvariable=self.prefix, width=150).pack(side="left", padx=(0, 30))
-        ctk.CTkLabel(row1, text="Starting Number:").pack(side="left", padx=(0, 10))
+        ctk.CTkEntry(row1, textvariable=self.prefix, width=150).pack(side="left", padx=(10, 30))
         ctk.CTkEntry(row1, textvariable=self.start_num, width=100).pack(side="left")
-
         row2 = ctk.CTkFrame(settings_card, fg_color="transparent")
         row2.pack(fill="x", padx=20, pady=(0, 20))
-        ctk.CTkLabel(row2, text="Output Directory:").pack(anchor="w")
-        path_row = ctk.CTkFrame(row2, fg_color="transparent")
-        path_row.pack(fill="x")
-        ctk.CTkEntry(path_row, textvariable=self.output_folder).pack(side="left", fill="x", expand=True, padx=(0, 10))
-        ctk.CTkButton(path_row, text="Browse", width=80, command=self.browse_dir, 
-                     fg_color="gray30", hover_color="gray40").pack(side="right")
-
-        # Console
+        ctk.CTkEntry(row2, textvariable=self.output_folder).pack(side="left", fill="x", expand=True, padx=(10, 10))
+        ctk.CTkButton(row2, text="Browse", width=80, command=self.browse_dir).pack(side="right")
         self.tab_console.grid_columnconfigure(0, weight=1)
         self.tab_console.grid_rowconfigure(1, weight=1)
         self.progress_bar = ctk.CTkProgressBar(self.tab_console, height=12)
         self.progress_bar.grid(row=0, column=0, padx=20, pady=20, sticky="ew")
-        self.progress_bar.set(0)
-        self.log_text = ctk.CTkTextbox(self.tab_console, corner_radius=10, 
-                                      font=ctk.CTkFont(family="Consolas", size=13),
-                                      fg_color=("#F0F0F0", "#121212"))
+        self.log_text = ctk.CTkTextbox(self.tab_console, corner_radius=10, font=ctk.CTkFont(family="Consolas", size=13))
         self.log_text.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
         self.log_text.configure(state="disabled")
+
+    def add_placeholder(self, widget, placeholder):
+        val = widget.get("1.0", "end-1c").strip()
+        if not val or val == placeholder:
+            widget.delete("1.0", "end")
+            widget.insert("1.0", placeholder)
+            widget.configure(text_color="gray40")
+
+    def clear_placeholder(self, widget, placeholder):
+        if widget.get("1.0", "end-1c") == placeholder:
+            widget.delete("1.0", "end")
+            widget.configure(text_color=ctk.ThemeManager.theme["CTkTextbox"]["text_color"])
 
     def browse_dir(self):
         dirname = filedialog.askdirectory()
@@ -178,36 +286,35 @@ class AutoContentPro(ctk.CTk):
         self.log_text.configure(state="disabled")
 
     def restore_work(self):
-        # Restore editor text from cookies
-        if self.settings.get("content"):
-            self.content_text.insert("1.0", self.settings.get("content"))
-        elif (BASE_DIR / "content.md").exists():
-            self.content_text.insert("1.0", (BASE_DIR / "content.md").read_text(encoding="utf-8"))
-            
-        if self.settings.get("titles"):
-            self.titles_text.insert("1.0", self.settings.get("titles"))
-        elif (BASE_DIR / "titles.md").exists():
-            self.titles_text.insert("1.0", (BASE_DIR / "titles.md").read_text(encoding="utf-8"))
+        content = self.settings.get("content")
+        if content:
+            self.content_text.insert("1.0", content)
+        else:
+            self.add_placeholder(self.content_text, CONTENT_PLACEHOLDER)
+        titles = self.settings.get("titles")
+        if titles:
+            self.titles_text.insert("1.0", titles)
+        else:
+            self.add_placeholder(self.titles_text, TITLES_PLACEHOLDER)
 
     def start_generation(self):
-        # Auto-save before running
         self.save_settings()
-        
         self.generate_btn.configure(state="disabled", text="RUNNING...")
         self.status_badge.configure(text="● GENERATING", text_color="#F1C40F")
         self.tabview.set("🖥️ SYSTEM CONSOLE")
         self.log_text.configure(state="normal")
         self.log_text.delete("1.0", "end")
         self.log_text.configure(state="disabled")
-        
-        thread = threading.Thread(target=self.run_generation)
-        thread.daemon = True
-        thread.start()
+        threading.Thread(target=self.run_generation, daemon=True).start()
 
     def run_generation(self):
         try:
             raw_content = self.content_text.get("1.0", "end-1c")
+            if raw_content == CONTENT_PLACEHOLDER:
+                raw_content = ""
             raw_titles = self.titles_text.get("1.0", "end-1c")
+            if raw_titles == TITLES_PLACEHOLDER:
+                raw_titles = ""
             output_dir = Path(self.output_folder.get())
             prefix = self.prefix.get()
             try:
@@ -215,15 +322,14 @@ class AutoContentPro(ctk.CTk):
             except:
                 start_n = 1
             if not raw_content.strip():
-                self.after(0, lambda: messagebox.showerror("Error", "Editor content is empty!"))
+                self.after(0, lambda: messagebox.showerror("Error", "Content is empty!"))
                 return
             titles = [l.strip() for l in raw_titles.splitlines() if l.strip()]
             if not titles:
-                self.after(0, lambda: messagebox.showerror("Error", "Title list is empty!"))
+                self.after(0, lambda: messagebox.showerror("Error", "No titles provided!"))
                 return
             output_dir.mkdir(parents=True, exist_ok=True)
             total = len(titles)
-            self.after(0, lambda: self.log(f"Initializing Engine: {total} units planned"))
             for i, title in enumerate(titles):
                 file_num = start_n + i
                 filename = f"{prefix}{file_num:02d}.pdf"
@@ -231,14 +337,17 @@ class AutoContentPro(ctk.CTk):
                 self.build_pdf(filepath, title, raw_content)
                 progress = (i + 1) / total
                 self.after(0, lambda p=progress, m=f"SUCCESS: {filename}": [self.progress_bar.set(p), self.log(m)])
-            self.after(0, lambda: [self.status_badge.configure(text="● SYSTEM READY", text_color="#2ECC71"), 
-                                  self.log("\nBatch complete. Systems stable."), 
-                                  messagebox.showinfo("AutoContent Pro", f"Successfully generated {total} PDFs!")])
+            self.after(0, lambda: [
+                self.status_badge.configure(text="● SYSTEM READY", text_color="#2ECC71"),
+                messagebox.showinfo("AutoContent Pro", "Batch complete!")
+            ])
         except Exception as err:
-            err_msg = str(err)
-            self.after(0, lambda msg=err_msg: [self.status_badge.configure(text="● ENGINE ERROR", text_color="#E74C3C"), 
-                                              self.log(f"CRITICAL ERROR: {msg}"), 
-                                              messagebox.showerror("Error", msg)])
+            m = str(err)
+            self.after(0, lambda m=m: [
+                self.status_badge.configure(text="● ENGINE ERROR", text_color="#E74C3C"),
+                self.log(f"CRITICAL ERROR: {m}"),
+                messagebox.showerror("Error", m)
+            ])
         finally:
             self.after(0, lambda: self.generate_btn.configure(state="normal", text="GENERATE NOW"))
 
@@ -247,7 +356,6 @@ class AutoContentPro(ctk.CTk):
         pdf = FPDF()
         pdf.set_auto_page_break(auto=True, margin=20)
         pdf.add_page()
-        pdf.set_text_color(26, 26, 46)
         pdf.set_font("helvetica", "B", 20)
         pdf.multi_cell(0, 12, title)
         pdf.set_draw_color(59, 142, 208)
@@ -257,22 +365,26 @@ class AutoContentPro(ctk.CTk):
         pdf.ln(10)
         md_clean = re.sub(r"^#\s+.*", "", raw_markdown, count=1, flags=re.MULTILINE)
         html_content = markdown(md_clean, extensions=['extra', 'sane_lists'])
-        final_html = f'<font face="helvetica" size="12">{html_content}</font>'
-        
-        # FIXED: Using "B" and "I" style strings which are universally supported
         tag_styles = {
             "h2": FontFace(emphasis="B", size_pt=16, color=(26, 26, 46)),
             "h3": FontFace(emphasis="B", size_pt=14, color=(26, 26, 46)),
-            "h4": FontFace(emphasis="B", size_pt=12, color=(0, 0, 0)),
             "p": FontFace(size_pt=12, color=(40, 40, 40)),
             "li": FontFace(size_pt=12, color=(40, 40, 40)),
-            "blockquote": FontFace(emphasis="I", size_pt=11, color=(85, 85, 85)),
+            "blockquote": FontFace(emphasis="I", size_pt=11, color=(85, 85, 85))
         }
-        pdf.write_html(final_html, tag_styles=tag_styles)
+        pdf.write_html(f'<font face="helvetica" size="12">{html_content}</font>', tag_styles=tag_styles)
         pdf.output(str(filepath))
+
+    def on_closing(self):
+        try:
+            self.save_settings()
+        except:
+            pass
+        self.quit()
+        self.destroy()
+        sys.exit(0)
 
 if __name__ == "__main__":
     app = AutoContentPro()
-    # Ensure save on close
-    app.protocol("WM_DELETE_WINDOW", lambda: [app.save_settings(), app.destroy()])
+    app.protocol("WM_DELETE_WINDOW", app.on_closing)
     app.mainloop()
