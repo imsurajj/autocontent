@@ -13,7 +13,8 @@ pdf_gen/
 ├── main.py          ← all the logic
 ├── .env             ← your API key + settings
 ├── requirements.txt ← python packages needed
-└── content.md       ← your title + body content
+├── content.md       ← your body content
+└── titles.md        ← list of PDF titles (one per line)
 ```
 
 ---
@@ -81,6 +82,7 @@ GEMINI_MODEL=gemini-1.5-flash
 
 HOW_MANY_PDFS=5
 FILE_PREFIX=exp
+START_NUMBER=1
 OUTPUT_FOLDER=output_pdfs
 ```
 
@@ -90,6 +92,7 @@ OUTPUT_FOLDER=output_pdfs
 | `GEMINI_MODEL` | Gemini model to use (keep as `gemini-1.5-flash`) |
 | `HOW_MANY_PDFS` | How many PDFs to generate |
 | `FILE_PREFIX` | Filename prefix — `exp` gives `exp01.pdf`, `exp02.pdf` ... |
+| `START_NUMBER` | Starting number for filenames (e.g. `1` → `exp01.pdf`). Leave empty to auto-detect from existing files |
 | `OUTPUT_FOLDER` | Where PDFs are saved (see options below) |
 
 ### OUTPUT_FOLDER options
@@ -118,6 +121,13 @@ Open `content.md` in any text editor.
 
 **Format rules:**
 - The first line must start with `#` — this is your base title
+
+If you want to generate multiple PDFs with different titles, add one title per line in `titles.md` instead of typing them at runtime.
+
+Supported markdown title lines in `titles.md`:
+- Plain text lines
+- `- bullet` list items
+- `1. numbered` list items
 - Gemini will rephrase this title for each PDF
 - Leave a blank line between paragraphs
 
@@ -213,4 +223,5 @@ SyntaxError or TypeError
 | Number of PDFs | `HOW_MANY_PDFS` in `.env` |
 | Output folder / location | `OUTPUT_FOLDER` in `.env` |
 | Filename prefix (exp → doc) | `FILE_PREFIX` in `.env` |
+| Starting number for filenames | `START_NUMBER` in `.env` |
 | Gemini model | `GEMINI_MODEL` in `.env` |

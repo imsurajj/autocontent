@@ -1,13 +1,10 @@
 """
 PDF Batch Generator
 -------------------
-Reads content from content.md (supports full markdown formatting).
-Rephrases only the creative front part of the title via Gemini.
-Fixed query from .env is always appended at the end in {{braces}}.
-
-Title output format:
-    ✈️ Smart Ways To File An Expedia Dispute Without Stress {{How do I dispute Expedia?}}
-    🚨 Easy Steps To Handle An Expedia Dispute Smoothly {{How do I dispute Expedia?}}
+- User pastes titles (one per line) — used exactly as given
+- Content comes from content.md (full markdown supported)
+- Auto-detects existing PDFs and continues numbering from there
+  e.g. if exp01-exp05 exist, next batch starts at exp06
 
 Setup:
     pip install -r requirements.txt
@@ -20,7 +17,6 @@ import os
 import re
 import sys
 from dotenv import load_dotenv
-import google.generativeai as genai
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from reportlab.lib import colors
@@ -34,16 +30,115 @@ load_dotenv()
 
 # ── Config from .env ──────────────────────────────────────────────────────────
 
-API_KEY       = os.getenv("GEMINI_API_KEY", "")
-MODEL_NAME    = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-HOW_MANY      = int(os.getenv("HOW_MANY_PDFS", "5"))
 PREFIX        = os.getenv("FILE_PREFIX", "exp")
 OUTPUT_FOLDER = os.getenv("OUTPUT_FOLDER", "output_pdfs")
-QUERY         = os.getenv("TITLE_QUERY", "")     # e.g. How do I dispute Expedia?
-TOPIC         = os.getenv("TITLE_TOPIC", "")     # e.g. Expedia dispute guide
+TITLES_FILE   = os.getenv("TITLES_FILE", "titles.md")
+START_NUMBER  = os.getenv("START_NUMBER")
+
+if START_NUMBER:
+    try:
+        START_NUMBER = int(START_NUMBER)
+    except ValueError:
+        START_NUMBER = None
 
 if not os.path.isabs(OUTPUT_FOLDER):
     OUTPUT_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), OUTPUT_FOLDER)
+
+
+# ── Auto-detect next file number ──────────────────────────────────────────────
+
+def next_file_number() -> int:
+    """
+    Scans OUTPUT_FOLDER for files matching PREFIX+number (e.g. exp01.pdf, exp12.pdf)
+    and returns the next number to use.
+    If START_NUMBER is set in .env, uses that as the starting point.
+    Otherwise, returns the next number after existing files.
+    """
+    if START_NUMBER:
+        return START_NUMBER
+
+    if not os.path.exists(OUTPUT_FOLDER):
+        return 1
+
+    pattern = re.compile(rf'^{re.escape(PREFIX)}(\d+)\.pdf$', re.IGNORECASE)
+    numbers = []
+
+    for fname in os.listdir(OUTPUT_FOLDER):
+        m = pattern.match(fname)
+        if m:
+            numbers.append(int(m.group(1)))
+
+    return max(numbers) + 1 if numbers else 1
+
+
+# ── Ask user for titles ───────────────────────────────────────────────────────
+
+def get_titles_from_stdin() -> list:
+    """
+    Prompts the user to paste one or more titles (one per line).
+    Ends input on a blank line or EOF.
+    """
+    print("\n  Paste your titles below (one per line).")
+    print("  Press Enter twice when done:\n")
+
+    titles = []
+    while True:
+        try:
+            line = input()
+        except EOFError:
+            break
+        if line.strip() == "":
+            if titles:          # blank line after at least one title = done
+                break
+            else:
+                continue        # ignore leading blank lines
+        titles.append(line.strip())
+
+    if not titles:
+        print("❌  No titles entered. Exiting.")
+        sys.exit(1)
+
+    return titles
+
+
+def load_titles() -> list:
+    """
+    Loads titles from a markdown file if it exists, otherwise prompts the user.
+    Supports plain lines, markdown bullets, and numbered lists.
+    """
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    titles_path = TITLES_FILE if os.path.isabs(TITLES_FILE) else os.path.join(base_dir, TITLES_FILE)
+
+    if os.path.exists(titles_path):
+        with open(titles_path, "r", encoding="utf-8") as f:
+            raw_lines = f.readlines()
+
+        titles = []
+        for raw in raw_lines:
+            s = raw.strip()
+            if not s:
+                continue
+            if s.startswith("#"):
+                continue
+            bullet_match = re.match(r'^[\-\*\+]\s+(.*)$', s)
+            if bullet_match:
+                s = bullet_match.group(1).strip()
+            else:
+                numbered_match = re.match(r'^\d+\.\s+(.*)$', s)
+                if numbered_match:
+                    s = numbered_match.group(1).strip()
+
+            if s:
+                titles.append(s)
+
+        if titles:
+            print(f"\n  Loaded {len(titles)} title(s) from {TITLES_FILE}")
+            return titles
+
+        print(f"\n  {TITLES_FILE} found but no titles were parsed. Falling back to paste input.")
+
+    print(f"\n  No titles file found at {TITLES_FILE}. Using paste input instead.")
+    return get_titles_from_stdin()
 
 
 # ── Load content.md ───────────────────────────────────────────────────────────
@@ -57,7 +152,7 @@ def load_content():
     with open(path, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
-    # Drop the first # heading — title is generated by Gemini
+    # Drop the first # heading line — title comes from user input
     if lines and lines[0].startswith("#"):
         lines = lines[1:]
 
@@ -69,10 +164,10 @@ def load_content():
 def md_to_story(lines: list, styles) -> list:
     """
     Supported markdown:
-      # H1  ## H2  ### H3
-      **bold**  *italic*  `code`
+      # H1   ## H2   ### H3
+      **bold**   *italic*   `code`
       - bullet  (or * or +)
-      1. numbered
+      1. numbered list
       > blockquote
       blank line = paragraph break
     """
@@ -112,10 +207,10 @@ def md_to_story(lines: list, styles) -> list:
         text = re.sub(r'`(.+?)`',       r'<font name="Courier">\1</font>', text)
         return text
 
-    story        = []
-    para_lines   = []
-    bullet_buf   = []
-    num_buf      = []
+    story      = []
+    para_lines = []
+    bullet_buf = []
+    num_buf    = []
 
     def flush_para():
         if para_lines:
@@ -181,58 +276,6 @@ def md_to_story(lines: list, styles) -> list:
     return story
 
 
-# ── Rephrase title prefix via Gemini ─────────────────────────────────────────
-
-used_titles = []
-
-def make_title(attempt: int) -> str:
-    """
-    Generates:  <emoji> <unique creative phrase> {{QUERY}}
-    The QUERY part never changes. Only the prefix is generated by Gemini.
-    """
-    if not API_KEY or API_KEY == "your_gemini_api_key_here":
-        print("❌  Set GEMINI_API_KEY in .env")
-        sys.exit(1)
-
-    if not QUERY:
-        print("❌  Set TITLE_QUERY in .env  e.g.  TITLE_QUERY=How do I dispute Expedia?")
-        sys.exit(1)
-
-    genai.configure(api_key=API_KEY)
-    model = genai.GenerativeModel(
-        MODEL_NAME,
-        generation_config=genai.GenerationConfig(
-            temperature=1.8,
-            max_output_tokens=80,
-        )
-    )
-
-    already = "\n".join(f"- {t}" for t in used_titles) if used_titles else "None"
-    topic_hint = f"Topic: {TOPIC}\n" if TOPIC else ""
-
-    prompt = (
-        f"You write catchy article title prefixes.\n\n"
-        f"{topic_hint}"
-        f"Fixed query (always appended at the end, DO NOT include it): {QUERY}\n\n"
-        f"Write ONLY a short punchy prefix (5–9 words) that naturally leads into that query.\n"
-        f"Always start with a relevant emoji. Vary the style each time:\n"
-        f"  Action  → 'Smart Ways To File An Expedia Dispute Without Stress'\n"
-        f"  How-to  → 'How To Resolve An Expedia Dispute Like a Pro'\n"
-        f"  Benefit → 'Stress-Free Tips For Winning Your Expedia Dispute'\n"
-        f"  Urgent  → 'Quick Fix: Handle Your Expedia Dispute Today'\n"
-        f"  Bold    → 'Hassle-Free Guide To Filing An Expedia Dispute Fast'\n\n"
-        f"Already used (DO NOT repeat or closely copy):\n{already}\n\n"
-        f"Variation #{attempt} — return ONLY the emoji + prefix phrase, nothing else:"
-    )
-
-    response = model.generate_content(prompt)
-    prefix = response.text.strip().strip('"').strip("'")
-    used_titles.append(prefix)
-
-    # Final title:  ✈️ Smart Ways To ... {{How do I dispute Expedia?}}
-    return f"{prefix} {{{{{QUERY}}}}}"
-
-
 # ── Build one PDF ─────────────────────────────────────────────────────────────
 
 def build_pdf(filepath: str, title: str, md_lines: list):
@@ -261,29 +304,28 @@ def build_pdf(filepath: str, title: str, md_lines: list):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    md_lines = load_content()
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-    print(f"\n  Query      : {QUERY}")
-    print(f"  Generating : {HOW_MANY} PDFs  →  {OUTPUT_FOLDER}\n")
+    titles   = load_titles()
+    md_lines = load_content()
+    start_n  = next_file_number()
 
-    for i in range(1, HOW_MANY + 1):
-        filename = f"{PREFIX}{i:02d}.pdf"
+    print(f"\n  {len(titles)} title(s) received")
+    print(f"  Starting from : {PREFIX}{start_n:02d}.pdf")
+    print(f"  Output folder : {OUTPUT_FOLDER}\n")
+
+    for i, title in enumerate(titles):
+        n        = start_n + i
+        filename = f"{PREFIX}{n:02d}.pdf"
         filepath = os.path.join(OUTPUT_FOLDER, filename)
 
-        print(f"[{i}/{HOW_MANY}] Generating title...", end=" ", flush=True)
-        try:
-            title = make_title(attempt=i)
-            print("✓")
-        except Exception as e:
-            print(f"⚠ Gemini error ({e}), using fallback.")
-            title = f"Guide #{i} {{{{{QUERY}}}}}"
-
-        print(f"        → {title}")
+        print(f"[{i+1}/{len(titles)}] {filename}")
+        print(f"        Title : {title}")
         build_pdf(filepath, title, md_lines)
-        print(f"        Saved: {filename}\n")
+        print(f"        Saved ✓\n")
 
-    print(f"✅  Done! {HOW_MANY} PDFs saved to:\n   {OUTPUT_FOLDER}\n")
+    print(f"✅  Done! {len(titles)} PDF(s) saved to:")
+    print(f"   {OUTPUT_FOLDER}\n")
 
 
 if __name__ == "__main__":
