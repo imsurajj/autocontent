@@ -45,9 +45,9 @@ This guide walks you through deploying your licensing server to PythonAnywhere s
 You can now easily manage all your licenses directly from your web browser using these 4 URLs. **Make sure to replace `TEAM-A-1234` with the actual key you are managing!**
 
 ### 1. Add a New Key
-Generate a new key for a user:
-`https://imsuraj.pythonanywhere.com/admin/add_key/TEAM-A-1234`
-*(You will see a message saying "Key added successfully". You can now give this key to your team member.)*
+Generate a new key for a user and track their name and license duration. You can add `?name=...` and `?duration=...` (in days) to the end of the URL.
+`https://imsuraj.pythonanywhere.com/admin/add_key/TEAM-A-1234?name=John+Doe&duration=60`
+*(Use a `+` instead of spaces for the name. You will see a message saying "Key added successfully". You can now give this key to your team member.)*
 
 ### 2. See All Keys & Statuses
 Check who is active, who is revoked, and see their Hardware IDs:
