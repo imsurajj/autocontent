@@ -31,6 +31,7 @@ _istemp/
 
 # App Specific (Private Data)
 license.key
+licenses.db
 settings.json
 # settings.json is user-specific and generated at runtime
 output_pdfs/

@@ -134,10 +134,9 @@ ICON_PATH = get_resource_path(os.path.join("image", "logo.ico"))
 APP_VERSION = "2.0.0"
 VERSION_URL = "https://raw.githubusercontent.com/imsurajj/autocontent/main/version.json"
 
-# Security Config (Pro Hashing)
-# The app validates the user-facing activation key by hashing it.
-# The actual plain key is not stored in readable form here.
-KEY_HASH = "d98d6111195555816560a714cbdd9bda62ff006f7fd4757ba188b3852cbedb27"
+# Security Config (Server Licensing)
+# Replace with your actual PythonAnywhere URL once you set it up.
+LICENSE_API_URL = "https://yourusername.pythonanywhere.com"
 LICENSE_DURATION_DAYS = 30
 
 # Placeholders
@@ -278,6 +277,10 @@ class AutoContentPro(ctk.CTk):
         normalized = re.sub(r"[\s\-]+", "", key).upper()
         return normalized
 
+    def get_hwid(self):
+        import uuid
+        return str(uuid.getnode())
+
     def get_license_path(self):
         if LICENSE_FILE.exists():
             return LICENSE_FILE
@@ -293,14 +296,28 @@ class AutoContentPro(ctk.CTk):
                 with open(license_path, "r") as f:
                     data = json.load(f)
                     activation_date_str = data.get("date", "")
-                    license_hash = data.get("key", "")
+                    user_key = data.get("key", "")
                     if "T" in activation_date_str:
                         activation_date = datetime.fromisoformat(activation_date_str)
                     else:
                         activation_date = datetime.strptime(activation_date_str, "%Y-%m-%d")
                     
-                    if license_hash == KEY_HASH and datetime.now() < activation_date + timedelta(days=LICENSE_DURATION_DAYS):
-                        is_valid = True
+                    try:
+                        hwid = self.get_hwid()
+                        req_data = json.dumps({"key": user_key, "hwid": hwid}).encode('utf-8')
+                        req = urllib.request.Request(LICENSE_API_URL + "/verify", data=req_data, headers={'Content-Type': 'application/json'})
+                        with urllib.request.urlopen(req, timeout=5) as response:
+                            result = json.loads(response.read().decode('utf-8'))
+                            if result.get("status") == "success":
+                                is_valid = True
+                                with open(license_path, "w") as fw:
+                                    json.dump({"date": datetime.now().isoformat(), "key": user_key}, fw)
+                            else:
+                                print(f"License rejected by server: {result.get('message')}")
+                                is_valid = False
+                    except Exception:
+                        if datetime.now() < activation_date + timedelta(days=LICENSE_DURATION_DAYS):
+                            is_valid = True
             except Exception:
                 pass
         
@@ -359,19 +376,37 @@ class AutoContentPro(ctk.CTk):
                      font=ctk.CTkFont(size=12), text_color="gray60").pack(pady=(10, 0))
 
     def verify_license(self):
-        user_key = self.normalize_key(self.activation_key_entry.get())
-        user_hash = hashlib.sha256(user_key.encode()).hexdigest()
+        try:
+            entry_val = self.activation_key_entry.get()
+        except AttributeError:
+            try:
+                entry_val = self.key_entry.get()
+            except AttributeError:
+                entry_val = ""
+                
+        user_key = self.normalize_key(entry_val)
+        if not user_key:
+            messagebox.showerror("Error", "Please enter a key")
+            return
+            
+        hwid = self.get_hwid()
         
-        if user_hash == KEY_HASH:
-            with open(LICENSE_FILE, "w") as f:
-                json.dump({"date": datetime.now().isoformat(), "key": user_hash}, f)
-            self.update_activation_state(True)
-            threading.Thread(target=self.check_for_updates, daemon=True).start()
-        else:
-            messagebox.showerror(
-                "Error",
-                "Invalid License Key! Please enter the activation key exactly as provided, not the internal hash."
-            )
+        try:
+            req_data = json.dumps({"key": user_key, "hwid": hwid}).encode('utf-8')
+            req = urllib.request.Request(LICENSE_API_URL + "/verify", data=req_data, headers={'Content-Type': 'application/json'})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                
+            if result.get("status") == "success":
+                with open(LICENSE_FILE, "w") as f:
+                    json.dump({"date": datetime.now().isoformat(), "key": user_key}, f)
+                self.update_activation_state(True)
+                threading.Thread(target=self.check_for_updates, daemon=True).start()
+                messagebox.showinfo("Success", "Activation Successful!")
+            else:
+                messagebox.showerror("Error", f"Activation Failed: {result.get('message')}")
+        except Exception as e:
+            messagebox.showerror("Connection Error", f"Could not connect to activation server: {str(e)}\n\nPlease ensure you have internet access and the URL is correct.")
 
     def show_main_app(self):
         for child in self.winfo_children():
