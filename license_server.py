@@ -13,7 +13,9 @@ def init_db():
             key TEXT PRIMARY KEY,
             status TEXT NOT NULL,
             hwid TEXT,
-            notes TEXT
+            user_name TEXT,
+            duration_days INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     conn.commit()
@@ -64,12 +66,16 @@ def verify_license():
 def add_key(key):
     # WARNING: This endpoint is public for demonstration. 
     # Do not leave this unprotected in production!
+    user_name = request.args.get('name', 'Unknown User')
+    duration = request.args.get('duration', 30)
+    
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     try:
-        c.execute("INSERT INTO licenses (key, status) VALUES (?, ?)", (key.upper(), 'Active'))
+        c.execute("INSERT INTO licenses (key, status, user_name, duration_days) VALUES (?, ?, ?, ?)", 
+                 (key.upper(), 'Active', user_name, int(duration)))
         conn.commit()
-        msg = "Key added successfully"
+        msg = f"Key added successfully for {user_name} ({duration} days)"
     except sqlite3.IntegrityError:
         msg = "Key already exists"
     conn.close()
@@ -79,12 +85,19 @@ def add_key(key):
 def list_keys():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("SELECT key, status, hwid FROM licenses")
+    c.execute("SELECT key, status, hwid, user_name, duration_days, created_at FROM licenses")
     rows = c.fetchall()
     conn.close()
     
     # Format the data nicely
-    licenses = [{"key": row[0], "status": row[1], "hwid": row[2] or "Not Activated Yet"} for row in rows]
+    licenses = [{
+        "key": row[0], 
+        "status": row[1], 
+        "hwid": row[2] or "Not Activated Yet",
+        "user_name": row[3],
+        "duration_days": row[4],
+        "created_at": row[5]
+    } for row in rows]
     return jsonify({"licenses": licenses, "total": len(licenses)})
 
 @app.route('/admin/revoke/<key>', methods=['GET'])
