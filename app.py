@@ -105,7 +105,7 @@ def scan_system_fonts():
 
 
 def contains_unicode(text):
-    return bool(re.search(r"[^\x00-]", text))
+    return bool(re.search(r"[^\x00-\x7F]", text))
 
 # Initialize environment
 def get_resource_path(relative_path):
@@ -131,7 +131,7 @@ LOGO_PATH = get_resource_path(os.path.join("image", "logo.png"))
 ICON_PATH = get_resource_path(os.path.join("image", "logo.ico"))
 
 # App Meta
-APP_VERSION = "1.0.0"
+APP_VERSION = "2.0.0"
 VERSION_URL = "https://raw.githubusercontent.com/imsurajj/autocontent/main/version.json"
 
 # Security Config (Pro Hashing)
@@ -627,11 +627,10 @@ class AutoContentPro(ctk.CTk):
 
         s_row3 = ctk.CTkFrame(settings_container, fg_color="transparent")
         s_row3.pack(fill="x", padx=30, pady=(15, 30))
-        ctk.CTkLabel(s_row3, text="PDF Font Family:", font=ctk.CTkFont(weight="bold", size=13)).pack(side="left", padx=10)
-        font_values = ["Auto"] + list(self.font_map.keys())
-        self.font_menu = ctk.CTkOptionMenu(s_row3, values=font_values, variable=self.pdf_font, height=38, command=self.on_font_change)
-        self.font_menu._open_dropdown_menu = lambda *args: ScrollableDropdown(self.font_menu, font_values, self.on_font_change, self.pdf_font)
-        self.font_menu.pack(side="left", fill="x", expand=True, padx=10)
+        ctk.CTkLabel(s_row3, text="Choose PDF Typography:", font=ctk.CTkFont(weight="bold", size=13)).pack(side="left", padx=10)
+        
+        self.font_selector = ctk.CTkSegmentedButton(s_row3, values=["Auto", "Calibri", "Arial", "Helvetica"], variable=self.pdf_font, command=lambda v: self.save_settings(), height=38, font=ctk.CTkFont(size=12, weight="bold"))
+        self.font_selector.pack(side="left", fill="x", expand=True, padx=10)
 
         self.btn_next3 = ctk.CTkButton(self.pages["settings"], text="Ready to Generate! Go to Console →", height=45, corner_radius=10, font=btn_font, command=lambda: self.show_page("console"))
         self.btn_next3.grid(row=3, column=0, sticky="e", pady=(20, 0))
@@ -837,6 +836,7 @@ class AutoContentPro(ctk.CTk):
         threading.Thread(target=self.run_generation, daemon=True).start()
 
     def run_generation(self):
+        import datetime
         try:
             raw_content = self.content_text.get("1.0", "end-1c")
             if raw_content == CONTENT_PLACEHOLDER:
@@ -859,30 +859,53 @@ class AutoContentPro(ctk.CTk):
                 return
             output_dir.mkdir(parents=True, exist_ok=True)
             total = len(titles)
+            started_at = datetime.datetime.now()
+
+            self.after(0, lambda: self.log(f"{'─'*55}"))
+            self.after(0, lambda: self.log(f"  BATCH JOB STARTED  ·  {started_at.strftime('%Y-%m-%d  %H:%M:%S')}"))
+            self.after(0, lambda: self.log(f"  Documents queued   :  {total}"))
+            self.after(0, lambda: self.log(f"  Output folder      :  {output_dir}"))
+            self.after(0, lambda: self.log(f"{'─'*55}"))
+
             for i, title in enumerate(titles):
                 file_num = start_n + i
                 filename = f"{prefix}{file_num:02d}.pdf"
                 filepath = output_dir / filename
                 self.build_pdf(filepath, title, raw_content)
                 progress = (i + 1) / total
-                self.after(0, lambda p=progress, m=f"SUCCESS: {filename}": [self.progress_bar.set(p) if self.progress_bar else None, self.log(m)])
+                pct = int(progress * 100)
+                bar = "█" * int(progress * 20) + "░" * (20 - int(progress * 20))
+                msg = f"  [{bar}] {pct:>3}%   ✓  {filename}"
+                self.after(0, lambda p=progress, m=msg: [
+                    self.progress_bar.set(p) if self.progress_bar else None,
+                    self.log(m)
+                ])
+
+            elapsed = (datetime.datetime.now() - started_at).total_seconds()
+            self.after(0, lambda: self.log(f"{'─'*55}"))
+            self.after(0, lambda: self.log(f"  STATUS   :  ALL {total} DOCUMENTS GENERATED"))
+            self.after(0, lambda: self.log(f"  TIME     :  {elapsed:.2f}s  ·  {elapsed/total:.2f}s avg per file"))
+            self.after(0, lambda: self.log(f"  SAVED TO :  {output_dir}"))
+            self.after(0, lambda: self.log(f"{'─'*55}"))
             self.after(0, lambda: [
                 self.status_badge.configure(text="● SYSTEM READY", text_color="#2ECC71"),
-                messagebox.showinfo("AutoContent Pro", "Batch complete!")
+                messagebox.showinfo("Batch Complete", f"✓  {total} PDFs generated successfully!\n\nSaved to:\n{output_dir}")
             ])
         except Exception as err:
             m = str(err)
             self.after(0, lambda m=m: [
                 self.status_badge.configure(text="● ENGINE ERROR", text_color="#E74C3C"),
-                self.log(f"CRITICAL ERROR: {m}"),
-                messagebox.showerror("Error", m)
+                self.log(f"{'─'*55}"),
+                self.log(f"  CRITICAL ERROR"),
+                self.log(f"  {m}"),
+                self.log(f"{'─'*55}"),
+                messagebox.showerror("Generation Failed", m)
             ])
         finally:
             self.after(0, lambda: self.console_run_btn.configure(state="normal", text="▶ START BATCH GENERATION"))
 
     def build_pdf(self, filepath, title, raw_markdown):
         from fpdf.fonts import FontFace
-        
         selected_font = self.pdf_font.get() if hasattr(self, 'pdf_font') else "Auto"
         font_map = getattr(self, 'font_map', {})
 
@@ -891,78 +914,63 @@ class AutoContentPro(ctk.CTk):
             pdf.set_auto_page_break(auto=True, margin=20)
             pdf.add_page()
             
+            u_reg = get_resource_path(os.path.join("fonts", "NotoSans-Regular.ttf"))
+            unicode_ready = os.path.exists(u_reg)
+            if unicode_ready:
+                pdf.add_font("autocontentunicode", "", u_reg)
+                pdf.add_font("autocontentunicode", "B", get_resource_path(os.path.join("fonts", "NotoSans-Bold.ttf")) if os.path.exists(get_resource_path(os.path.join("fonts", "NotoSans-Bold.ttf"))) else u_reg)
+                pdf.add_font("autocontentunicode", "I", get_resource_path(os.path.join("fonts", "NotoSans-Italic.ttf")) if os.path.exists(get_resource_path(os.path.join("fonts", "NotoSans-Italic.ttf"))) else u_reg)
+                pdf.set_fallback_fonts(["autocontentunicode"])
+
             font_family = "helvetica"
-            
             def add_font_with_bold(family, reg_path):
                 pdf.add_font(family, "", str(reg_path))
-                # Intelligent search for bold variant on Windows/System
                 p = Path(reg_path)
-                candidates = [
-                    p.parent / (p.stem + "bd" + p.suffix),   # e.g., arialbd.ttf
-                    p.parent / (p.stem + "b" + p.suffix),    # e.g., verdanab.ttf
-                    p.parent / (p.stem + "-Bold" + p.suffix),# e.g., DejaVuSans-Bold.ttf
-                    p.parent / (p.stem + "Bold" + p.suffix), # e.g., CalibriBold.ttf
-                    p.parent / (p.stem + "_Bold" + p.suffix) # e.g., Custom_Bold.ttf
-                ]
-                bold_path = None
-                for c in candidates:
-                    if c.exists():
-                        bold_path = c
-                        break
-                
-                if bold_path:
-                    pdf.add_font(family, "B", str(bold_path))
-                else:
-                    # Fallback to same file if no bold found
-                    pdf.add_font(family, "B", str(reg_path))
+                bold = next((c for c in [p.parent/(p.stem+"bd"+p.suffix), p.parent/(p.stem+"b"+p.suffix), p.parent/(p.stem+"-Bold"+p.suffix), p.parent/(p.stem+"Bold"+p.suffix)] if c.exists()), None)
+                pdf.add_font(family, "B", str(bold) if bold else str(reg_path))
+                italic = next((c for c in [p.parent/(p.stem+"i"+p.suffix), p.parent/(p.stem+"-Italic"+p.suffix), p.parent/(p.stem+"Italic"+p.suffix)] if c.exists()), None)
+                pdf.add_font(family, "I", str(italic) if italic else str(reg_path))
+                bi = next((c for c in [p.parent/(p.stem+"bi"+p.suffix), p.parent/(p.stem+"-BoldItalic"+p.suffix)] if c.exists()), None)
+                pdf.add_font(family, "BI", str(bi) if bi else str(reg_path))
 
             if use_fallback:
-                font_path = get_unicode_font_path(font_map)
-                if font_path is None:
-                    raise RuntimeError("No fallback unicode font found.")
-                font_family = "AutoContentUnicode"
-                add_font_with_bold(font_family, font_path)
+                fpath = get_unicode_font_path(font_map)
+                if fpath:
+                    font_family = "AutoContentUnicode"
+                    add_font_with_bold(font_family, fpath)
             elif selected_font and selected_font != "Auto":
-                font_path = get_unicode_font_path(font_map, selected_font)
-                if font_path is None:
-                    raise RuntimeError(f"Selected PDF font '{selected_font}' was not found on this system.")
-                font_family = selected_font
-                add_font_with_bold(font_family, font_path)
-            
+                fpath = get_unicode_font_path(font_map, selected_font)
+                if fpath:
+                    font_family = selected_font
+                    add_font_with_bold(font_family, fpath)
+
             pdf.set_font(font_family, style="B", size=20)
-            
-            # Faux bold by overprinting slightly to the right to guarantee bold effect
-            x = pdf.get_x()
-            y = pdf.get_y()
             pdf.multi_cell(0, 12, title)
-            pdf.set_xy(x + 0.3, y)
-            pdf.multi_cell(0, 12, title)
-            
             pdf.set_draw_color(59, 142, 208)
-            pdf.set_line_width(0.8)
-            pdf.ln(2)
-            pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+            pdf.line(10, pdf.get_y()+2, 200, pdf.get_y()+2)
             pdf.ln(10)
-            
-            md_clean = re.sub(r"^#\s+.*", "", raw_markdown, count=1, flags=re.MULTILINE)
-            html_content = markdown(md_clean, extensions=['extra', 'sane_lists'])
+
+            html_content = markdown(re.sub(r"^#\s+.*", "", raw_markdown, count=1, flags=re.MULTILINE), extensions=['extra', 'sane_lists'])
             tag_styles = {
-                "h1": FontFace(emphasis="B", size_pt=20, color=(26, 26, 46)),
-                "h2": FontFace(emphasis="B", size_pt=16, color=(26, 26, 46)),
-                "h3": FontFace(emphasis="B", size_pt=14, color=(26, 26, 46)),
-                "p": FontFace(size_pt=12, color=(40, 40, 40)),
-                "li": FontFace(size_pt=12, color=(40, 40, 40)),
-                "blockquote": FontFace(emphasis="I", size_pt=11, color=(85, 85, 85))
+                "h1": FontFace(emphasis="B", size_pt=20),
+                "h2": FontFace(emphasis="B", size_pt=16),
+                "h3": FontFace(emphasis="B", size_pt=14),
+                "p":  FontFace(size_pt=12),
+                "li": FontFace(size_pt=12),
             }
-            pdf.write_html(html_content, tag_styles=tag_styles)
+            try:
+                pdf.write_html(html_content, tag_styles=tag_styles)
+            except Exception:
+                pdf.set_font("helvetica", size=12)
+                pdf.multi_cell(0, 8, html_content)
             return pdf
 
         try:
-            pdf = generate(use_fallback=False)
-        except Exception:
-            pdf = generate(use_fallback=True)
-            
-        pdf.output(str(filepath))
+            res = generate(use_fallback=False)
+            res.output(str(filepath))
+        except:
+            res = generate(use_fallback=True)
+            res.output(str(filepath))
 
     def on_closing(self):
         try:
