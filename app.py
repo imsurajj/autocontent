@@ -136,7 +136,7 @@ VERSION_URL = "https://raw.githubusercontent.com/imsurajj/autocontent/main/versi
 
 # Security Config (Server Licensing)
 # Replace with your actual PythonAnywhere URL once you set it up.
-LICENSE_API_URL = "https://yourusername.pythonanywhere.com"
+LICENSE_API_URL = "https://imsuraj.pythonanywhere.com"
 LICENSE_DURATION_DAYS = 30
 
 # Placeholders
