@@ -141,8 +141,8 @@ KEY_HASH = "d98d6111195555816560a714cbdd9bda62ff006f7fd4757ba188b3852cbedb27"
 LICENSE_DURATION_DAYS = 30
 
 # Placeholders
-CONTENT_PLACEHOLDER = "# Main Header\n\nWrite your content here using Markdown syntax.\n\n## Sub-section\n- List Item 1\n- List Item 2"
-TITLES_PLACEHOLDER = "Example Title 1\nExample Title 2\nExample Title 3"
+TITLES_PLACEHOLDER = "Enter your document titles here (one per line)...\nExample: Project Report\nExample: Invoice #101"
+CONTENT_PLACEHOLDER = "# Main Header\n\nWrite your content here using Markdown:\n\n- Use **text** for bold\n- Use *text* for italics\n- Use - for bullet points\n- Use 1. for numbered lists\n\n> This is a quote section.\n\nEnjoy generating your PDFs!"
 
 # Default fallback settings
 DEFAULT_SETTINGS = {
@@ -161,40 +161,84 @@ class ScrollableDropdown(ctk.CTkToplevel):
         self.overrideredirect(True)
         self.wm_attributes("-topmost", True)
         self.widget = widget
-        self.values = values
+        self.all_values = values
         self.command = command
         self.variable = variable
 
-        # Show exactly 10 items if more than 10
-        item_height = 30
-        max_items = 10
-        height = min(len(values), max_items) * item_height + 15
-        width = widget.winfo_width()
+        # Background color matching the app
+        bg_color = ctk.ThemeManager.theme.get("CTkFrame", {}).get("fg_color", ["#F9F9F9", "#1A1B1B"])[1 if ctk.get_appearance_mode() == "Dark" else 0]
+        text_color = ("black", "white")[1 if ctk.get_appearance_mode() == "Dark" else 0]
+        self.configure(fg_color=bg_color)
         
-        # Position right below the option menu
+        # Container with a nice border
+        self.container = ctk.CTkFrame(self, fg_color=bg_color, corner_radius=10, border_width=1, border_color=("gray80", "gray30"))
+        self.container.pack(fill="both", expand=True)
+
+        # Search bar at the top
+        self.search_var = tk.StringVar()
+        self.search_var.trace_add("write", self._filter_list)
+        self.search_entry = ctk.CTkEntry(self.container, placeholder_text="Search font...", textvariable=self.search_var, height=30, corner_radius=5, border_width=1)
+        self.search_entry.pack(fill="x", padx=10, pady=(10, 5))
+
+        self.canvas = tk.Canvas(self.container, bg=bg_color, highlightthickness=0)
+        self.scrollbar = ctk.CTkScrollbar(self.container, orientation="vertical", width=12, command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        
+        self.listbox = tk.Listbox(
+            self.canvas, 
+            bg=bg_color,
+            fg=text_color,
+            font=ctk.CTkFont(size=12),
+            borderwidth=0,
+            highlightthickness=0,
+            selectbackground="#3B8ED0",
+            selectforeground="white",
+            activestyle="none",
+            exportselection=False
+        )
+        
+        self.scrollbar.pack(side="right", fill="y", padx=(0, 5), pady=5)
+        self.canvas.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+        self.canvas.create_window((0, 0), window=self.listbox, anchor="nw")
+
+        self._update_listbox(self.all_values)
+
+        # Position it accurately
+        self.wait_visibility()
         x = widget.winfo_rootx()
-        y = widget.winfo_rooty() + widget.winfo_height()
+        y = widget.winfo_rooty() + widget.winfo_height() + 2
+        width = widget.winfo_width()
+        height = 350
+        
+        screen_height = self.winfo_screenheight()
+        if y + height > screen_height:
+            y = widget.winfo_rooty() - height - 2
+
         self.geometry(f"{width}x{height}+{x}+{y}")
-        
-        mode_idx = 1 if ctk.get_appearance_mode() == "Dark" else 0
-        
-        self.frame = ctk.CTkScrollableFrame(self, fg_color=ctk.ThemeManager.theme["CTkFrame"]["fg_color"][mode_idx], corner_radius=5)
-        self.frame.pack(expand=True, fill="both")
-        
-        for val in values:
-            btn = ctk.CTkButton(
-                self.frame, text=val, fg_color="transparent", anchor="w", 
-                text_color=ctk.ThemeManager.theme["CTkLabel"]["text_color"][mode_idx],
-                hover_color=ctk.ThemeManager.theme["CTkButton"]["hover_color"][mode_idx],
-                command=lambda v=val: self.select(v),
-                height=28
-            )
-            btn.pack(fill="x", pady=1, padx=2)
-            
-        self.focus_set()
+        self.listbox.config(width=width)
+
+        self.listbox.bind("<<ListboxSelect>>", self._on_select)
         self.bind("<FocusOut>", lambda e: self.destroy())
-        
-    def select(self, value):
+        self.search_entry.focus_set()
+
+    def _update_listbox(self, values):
+        self.listbox.delete(0, "end")
+        self.current_values = values
+        for val in values:
+            self.listbox.insert("end", f" {val}")
+
+    def _filter_list(self, *args):
+        search_term = self.search_var.get().lower()
+        if not search_term:
+            self._update_listbox(self.all_values)
+        else:
+            filtered = [v for v in self.all_values if search_term in v.lower()]
+            self._update_listbox(filtered)
+
+    def _on_select(self, event):
+        if not self.listbox.curselection(): return
+        index = self.listbox.curselection()[0]
+        value = self.current_values[index]
         if self.variable:
             self.variable.set(value)
         self.widget.set(value)
@@ -374,220 +418,293 @@ class AutoContentPro(ctk.CTk):
             json.dump(current_data, f, ensure_ascii=False, indent=4)
 
     def setup_ui(self):
-        self.sidebar_frame = ctk.CTkFrame(self, width=220, corner_radius=0)
+        # Unified background color (Dull white in light mode, Matte charcoal in dark)
+        unified_bg = ("#F9F9F9", "#1A1B1B")
+        self.configure(fg_color=unified_bg)
+
+        self.sidebar_frame = ctk.CTkFrame(self, width=220, corner_radius=0, fg_color=unified_bg, border_width=0)
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
-        self.sidebar_frame.grid_rowconfigure(5, weight=1)
+        self.sidebar_frame.grid_rowconfigure(7, weight=1)
+
+        # Right border for sidebar
+        self.sidebar_border = ctk.CTkFrame(self, width=1, fg_color=("gray85", "gray25"), corner_radius=0)
+        self.sidebar_border.grid(row=0, column=0, sticky="nse")
+        # Sidebar Header (Logo + Text side-by-side with perfect alignment)
+        self.header_frame = ctk.CTkFrame(self.sidebar_frame, fg_color="transparent")
+        self.header_frame.grid(row=0, column=0, padx=20, pady=(30, 20), sticky="nw")
+        
         try:
             logo_img = Image.open(LOGO_PATH)
-            self.logo_image = ctk.CTkImage(logo_img, size=(70, 70))
-            ctk.CTkLabel(self.sidebar_frame, image=self.logo_image, text="").grid(row=0, column=0, padx=20, pady=(30, 0))
+            self.logo_image = ctk.CTkImage(logo_img, size=(44, 44))
+            self.logo_lbl = ctk.CTkLabel(self.header_frame, image=self.logo_image, text="")
+            self.logo_lbl.grid(row=0, column=0, rowspan=2, padx=(0, 12))
         except:
-            ctk.CTkLabel(self.sidebar_frame, text="⚡", font=ctk.CTkFont(size=40)).grid(row=0, column=0, padx=20, pady=(30, 0))
-        ctk.CTkLabel(self.sidebar_frame, text="AutoContent Pro", font=ctk.CTkFont(size=20, weight="bold")).grid(row=1, column=0, padx=20, pady=(10, 0))
-        ctk.CTkLabel(self.sidebar_frame, text="ULTIMATE EDITION", font=ctk.CTkFont(size=10, weight="bold"), text_color="#3B8ED0").grid(row=2, column=0, padx=20, pady=(0, 20))
-        self.generate_btn = ctk.CTkButton(self.sidebar_frame, text="GENERATE NOW", command=self.start_generation, height=50, corner_radius=10, font=ctk.CTkFont(size=15, weight="bold"), fg_color="#3B8ED0", hover_color="#2B6DA0")
-        self.generate_btn.grid(row=3, column=0, padx=20, pady=10, sticky="ew")
+            self.logo_lbl = ctk.CTkLabel(self.header_frame, text="⚡", font=ctk.CTkFont(size=30))
+            self.logo_lbl.grid(row=0, column=0, rowspan=2, padx=(0, 12))
+            
+        self.text_container = ctk.CTkFrame(self.header_frame, fg_color="transparent")
+        self.text_container.grid(row=0, column=1, rowspan=2, sticky="w")
+        
+        ctk.CTkLabel(self.text_container, text="AutoContent Pro", font=ctk.CTkFont(size=18, weight="bold")).pack(anchor="w", pady=0)
+        ctk.CTkLabel(self.text_container, text="ULTIMATE EDITION", font=ctk.CTkFont(size=10, weight="bold"), text_color="#3B8ED0").pack(anchor="w", pady=(0, 0))
+        
         self.status_badge = ctk.CTkLabel(self.sidebar_frame, text="● SYSTEM READY", font=ctk.CTkFont(size=10, weight="bold"), text_color="#2ECC71")
-        self.status_badge.grid(row=4, column=0, padx=20, pady=5)
-        self.mode_menu = ctk.CTkOptionMenu(self.sidebar_frame, values=["Light", "Dark", "System"], variable=self.appearance_mode, command=self.change_appearance_mode)
-        self.mode_menu.grid(row=7, column=0, padx=20, pady=(10, 20))
-        self.main_container = ctk.CTkFrame(self, fg_color="transparent")
-        self.main_container.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
+        self.status_badge.grid(row=8, column=0, padx=20, pady=5)
+        
+        self.theme_switch = ctk.CTkSwitch(self.sidebar_frame, text="Dark Mode", command=self.toggle_theme)
+        self.theme_switch.grid(row=9, column=0, padx=20, pady=(10, 10))
+        if self.appearance_mode.get() == "Dark":
+            self.theme_switch.select()
+
+        self.version_label = ctk.CTkLabel(self.sidebar_frame, text=f"v{APP_VERSION}", font=ctk.CTkFont(size=10), text_color="gray50")
+        self.version_label.grid(row=10, column=0, padx=20, pady=(0, 20))
+
+        # Navigation Categories
+        self.nav_frame = ctk.CTkFrame(self.sidebar_frame, fg_color="transparent")
+        self.nav_frame.grid(row=4, column=0, sticky="ew", pady=10)
+        self.nav_frame.grid_columnconfigure(0, weight=1)
+
+        # Content Category
+        ctk.CTkLabel(self.nav_frame, text="EDITOR", font=ctk.CTkFont(size=10, weight="bold"), text_color="gray50").grid(row=0, column=0, padx=20, pady=(10, 5), sticky="w")
+        self.btn_titles = ctk.CTkButton(self.nav_frame, text="  Document Titles", anchor="w", height=38, corner_radius=8, fg_color="transparent", text_color=("gray20", "gray90"), hover_color=("gray85", "gray25"), command=lambda: self.show_page("titles"))
+        self.btn_titles.grid(row=1, column=0, padx=10, pady=2, sticky="ew")
+        self.btn_content = ctk.CTkButton(self.nav_frame, text="  Markdown Content", anchor="w", height=38, corner_radius=8, fg_color="transparent", text_color=("gray20", "gray90"), hover_color=("gray85", "gray25"), command=lambda: self.show_page("content"))
+        self.btn_content.grid(row=2, column=0, padx=10, pady=2, sticky="ew")
+
+        # Config Category
+        ctk.CTkLabel(self.nav_frame, text="CONFIGURATION", font=ctk.CTkFont(size=10, weight="bold"), text_color="gray50").grid(row=3, column=0, padx=20, pady=(15, 5), sticky="w")
+        self.btn_settings = ctk.CTkButton(self.nav_frame, text="  PDF Settings", anchor="w", height=38, corner_radius=8, fg_color="transparent", text_color=("gray20", "gray90"), hover_color=("gray85", "gray25"), command=lambda: self.show_page("settings"))
+        self.btn_settings.grid(row=4, column=0, padx=10, pady=2, sticky="ew")
+        self.btn_console = ctk.CTkButton(self.nav_frame, text="  System Console", anchor="w", height=38, corner_radius=8, fg_color="transparent", text_color=("gray20", "gray90"), hover_color=("gray85", "gray25"), command=lambda: self.show_page("console"))
+        self.btn_console.grid(row=5, column=0, padx=10, pady=2, sticky="ew")
+
+        self.main_container = ctk.CTkFrame(self, fg_color=unified_bg, corner_radius=0)
+        self.main_container.grid(row=0, column=1, sticky="nsew", padx=0, pady=0) # Remove padding for unified look
         self.main_container.grid_columnconfigure(0, weight=1)
-        self.main_container.grid_rowconfigure(0, weight=0)
         self.main_container.grid_rowconfigure(1, weight=1)
 
-        self.activation_card = ctk.CTkFrame(self.main_container, corner_radius=15)
-        self.activation_card.grid(row=0, column=0, sticky="ew", pady=(0, 10), padx=0)
+        # Content internal container to keep some spacing
+        self.content_inner = ctk.CTkFrame(self.main_container, fg_color="transparent")
+        self.content_inner.grid(row=1, column=0, sticky="nsew", padx=30, pady=30)
+        self.content_inner.grid_columnconfigure(0, weight=1)
+        self.content_inner.grid_rowconfigure(1, weight=1)
+
+        # Activation System (Dashboard Styled)
+        self.activation_card = ctk.CTkFrame(self.main_container, corner_radius=20, fg_color=unified_bg, border_width=1, border_color=("#E0E0E0", "#333333"))
+        self.activation_card.grid(row=0, column=0, sticky="ew", pady=(0, 25), padx=0)
         self.activation_card.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(self.activation_card, text="Activation required to enable app features.", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=20, pady=(20, 5), sticky="w")
-        self.activation_key_entry = ctk.CTkEntry(self.activation_card, placeholder_text="Enter Activation Key...", show="•", width=380, height=40, font=ctk.CTkFont(family="Consolas", size=14), border_width=1, corner_radius=12)
-        self.activation_key_entry.grid(row=1, column=0, padx=20, pady=(0, 10), sticky="ew")
+        
+        ctk.CTkLabel(self.activation_card, text="PRO ACTIVATION REQUIRED", font=ctk.CTkFont(size=15, weight="bold"), text_color="#E74C3C").grid(row=0, column=0, padx=25, pady=(20, 10), sticky="w")
+        
+        # Internal Divider for consistency
+        ctk.CTkFrame(self.activation_card, height=2, fg_color=("gray85", "gray25"), corner_radius=0).grid(row=1, column=0, sticky="ew", padx=25, pady=(0, 15))
+        
+        self.activation_key_entry = ctk.CTkEntry(self.activation_card, placeholder_text="Enter your license key to unlock pro features...", show="•", height=42, font=ctk.CTkFont(family="Consolas", size=13), border_width=1, corner_radius=10)
+        self.activation_key_entry.grid(row=2, column=0, padx=25, pady=(0, 15), sticky="ew")
         self.activation_key_entry.bind("<Return>", lambda e: self.verify_license())
-        self.activation_submit_btn = ctk.CTkButton(self.activation_card, text="ACTIVATE", command=self.verify_license, fg_color="#3B8ED0", hover_color="#2B6DA0", height=45, width=180, font=ctk.CTkFont(size=14, weight="bold"), corner_radius=12)
-        self.activation_submit_btn.grid(row=2, column=0, padx=20, pady=(0, 15), sticky="w")
-        ctk.CTkLabel(self.activation_card, text="Your install activation key enables generation and settings.", font=ctk.CTkFont(size=12), text_color="gray60").grid(row=3, column=0, padx=20, pady=(0, 20), sticky="w")
+        
+        self.activation_submit_btn = ctk.CTkButton(self.activation_card, text="UNLOCK PRO FEATURES", command=self.verify_license, fg_color="#3B8ED0", hover_color="#2B6DA0", height=45, font=ctk.CTkFont(size=14, weight="bold"), corner_radius=10)
+        self.activation_submit_btn.grid(row=3, column=0, padx=25, pady=(0, 15), sticky="w")
+        
+        ctk.CTkLabel(self.activation_card, text="Your license key activates all features for 30 days. No internet required for validation.", font=ctk.CTkFont(size=11), text_color="gray60").grid(row=4, column=0, padx=25, pady=(0, 20), sticky="w")
 
-        self.tabview = ctk.CTkTabview(self.main_container, corner_radius=15)
-        self.tabview.grid(row=1, column=0, sticky="nsew")
-        self.tab_editor = self.tabview.add("📝 CONTENT EDITOR")
-        self.tab_settings = self.tabview.add("⚙️ GLOBAL SETTINGS")
-        self.tab_console = self.tabview.add("🖥️ SYSTEM CONSOLE")
-        self.tab_editor.grid_columnconfigure(0, weight=1)
-        self.tab_editor.grid_columnconfigure(1, weight=1)
-        self.tab_editor.grid_rowconfigure(1, weight=1)
+        # Page Frames
+        self.pages = {}
+        for name in ["titles", "content", "settings", "console"]:
+            self.pages[name] = ctk.CTkFrame(self.content_inner, corner_radius=15, fg_color="transparent")
+            self.pages[name].grid_columnconfigure(0, weight=1)
+            # Row 0: Header, Row 1: Divider, Row 2: Main Content (Expandable)
+            self.pages[name].grid_rowconfigure(2, weight=1)
 
-        content_frame = ctk.CTkFrame(self.tab_editor, fg_color="transparent")
-        content_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
-        content_frame.grid_columnconfigure(1, weight=1)
-        content_frame.grid_rowconfigure(1, weight=1)
+        # Build Page 1: Titles
+        titles_header = ctk.CTkLabel(self.pages["titles"], text="Step 1: Document Titles", font=ctk.CTkFont(size=18, weight="bold"))
+        titles_header.grid(row=0, column=0, sticky="w", padx=1, pady=(0, 1))
+        
+        # Header Divider
+        ctk.CTkFrame(self.pages["titles"], height=2, fg_color=("gray85", "gray25"), corner_radius=0).grid(row=1, column=0, sticky="ew", pady=(0, 20))
 
-        self.titles_frame = ctk.CTkFrame(self.tab_editor, fg_color="transparent")
-        self.titles_frame.grid(row=1, column=1, padx=10, pady=10, sticky="nsew")
-        self.titles_frame.grid_columnconfigure(1, weight=1)
-        self.titles_frame.grid_rowconfigure(1, weight=1)
-
-        # Fetch theme colors
+        # Fetch theme colors for editors
         bg_color_dynamic = ctk.ThemeManager.theme.get("CTkTextbox", {}).get("fg_color", ["#F9F9FA", "#1D1E1E"])
         mode_idx = 1 if ctk.get_appearance_mode() == "Dark" else 0
         bg_color_static = bg_color_dynamic[mode_idx] if isinstance(bg_color_dynamic, list) else bg_color_dynamic
-
-        # Add heading to the content box
-        content_heading = ctk.CTkLabel(
-            content_frame,
-            text="Markdown Content",
-            font=ctk.CTkFont(family="Consolas", size=14, weight="bold")
-        )
-        content_heading.grid(row=0, column=0, columnspan=2, sticky="w", padx=5, pady=(5, 5))
-
-        # Shared font ensures identical pixel sizes between tk.Text and ctk.CTkTextbox
         editor_font = ctk.CTkFont(family="Consolas", size=14)
-
-        # Wrapper to make them look like a single input
-        content_wrapper = ctk.CTkFrame(content_frame, corner_radius=10, fg_color=bg_color_dynamic, border_width=0)
-        content_wrapper.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=(5, 0))
-        content_wrapper.grid_columnconfigure(1, weight=1)
-        content_wrapper.grid_rowconfigure(0, weight=1)
-
-        self.content_gutter = tk.Text(
-            content_wrapper,
-            width=4,
-            padx=5,
-            pady=0,
-            wrap="none",
-            bd=0,
-            highlightthickness=0,
-            bg=bg_color_static,
-            fg="#858585",  # Faded numbering like VS Code
-            font=editor_font,
-            state="normal"
-        )
-        self.content_gutter.grid(row=0, column=0, sticky="ns", pady=2)
-        self.content_text = ctk.CTkTextbox(content_wrapper, corner_radius=0, fg_color="transparent", border_width=0, undo=True, font=editor_font, wrap="none")
-        self.content_text.grid(row=0, column=1, sticky="nsew")
-        self.content_text._y_scrollbar.configure(width=0)
-        self.content_text._x_scrollbar.configure(width=0)
         
-        # Perfect padding match
-        pad_y = self.content_text._textbox.cget("pady")
-        self.content_gutter.configure(pady=pad_y)
-
-        # Add heading to the titles box
-        titles_heading = ctk.CTkLabel(
-            self.titles_frame,
-            text="Document Titles",
-            font=ctk.CTkFont(family="Consolas", size=14, weight="bold")
-        )
-        titles_heading.grid(row=0, column=0, columnspan=2, sticky="w", padx=5, pady=(5, 5))
-
-        titles_wrapper = ctk.CTkFrame(self.titles_frame, corner_radius=10, fg_color=bg_color_dynamic, border_width=0)
-        titles_wrapper.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=(5, 0))
+        titles_wrapper = ctk.CTkFrame(self.pages["titles"], corner_radius=10, fg_color=bg_color_dynamic)
+        titles_wrapper.grid(row=2, column=0, sticky="nsew")
+        self.pages["titles"].grid_rowconfigure(2, weight=1)
         titles_wrapper.grid_columnconfigure(1, weight=1)
         titles_wrapper.grid_rowconfigure(0, weight=1)
-
-        self.titles_gutter = tk.Text(
-            titles_wrapper,
-            width=4,
-            padx=5,
-            pady=0,
-            wrap="none",
-            bd=0,
-            highlightthickness=0,
-            bg=bg_color_static,
-            fg="#858585",
-            font=editor_font,
-            state="normal"
-        )
+        
+        self.titles_gutter = tk.Text(titles_wrapper, width=4, padx=5, bd=0, highlightthickness=0, bg=bg_color_static, fg="#858585", font=editor_font)
         self.titles_gutter.grid(row=0, column=0, sticky="ns", pady=2)
         self.titles_text = ctk.CTkTextbox(titles_wrapper, corner_radius=0, fg_color="transparent", border_width=0, undo=True, font=editor_font, wrap="none")
         self.titles_text.grid(row=0, column=1, sticky="nsew")
         self.titles_text._y_scrollbar.configure(width=0)
         self.titles_text._x_scrollbar.configure(width=0)
-        
-        # Perfect padding match
-        self.titles_gutter.configure(pady=pad_y)
 
-        # Bindings for updating line numbers
+        # Placeholder logic for Step 1
+        # Refined Ghost Placeholder for Step 1
+        self.titles_ghost = ctk.CTkLabel(titles_wrapper, text=TITLES_PLACEHOLDER, text_color=("gray60", "gray40"), fg_color="transparent", font=editor_font, justify="left", anchor="nw")
+        self.titles_ghost.grid(row=0, column=1, sticky="nw", padx=10, pady=5)
+        self.titles_ghost.bind("<Button-1>", lambda e: self.titles_text.focus_set())
+        
+        self.titles_text.bind("<KeyRelease>", lambda e: self._update_ghosts())
+
+        # Build Page 2: Content
+        content_header = ctk.CTkLabel(self.pages["content"], text="Step 2: Markdown Content", font=ctk.CTkFont(size=18, weight="bold"))
+        content_header.grid(row=0, column=0, sticky="w", padx=1, pady=(0, 1))
+        
+        # Header Divider
+        ctk.CTkFrame(self.pages["content"], height=2, fg_color=("gray85", "gray25"), corner_radius=0).grid(row=1, column=0, sticky="ew", pady=(0, 20))
+
+        content_wrapper = ctk.CTkFrame(self.pages["content"], corner_radius=10, fg_color=bg_color_dynamic)
+        content_wrapper.grid(row=2, column=0, sticky="nsew")
+        self.pages["content"].grid_rowconfigure(2, weight=1)
+        content_wrapper.grid_columnconfigure(1, weight=1)
+        content_wrapper.grid_rowconfigure(0, weight=1)
+
+        self.content_gutter = tk.Text(content_wrapper, width=4, padx=5, bd=0, highlightthickness=0, bg=bg_color_static, fg="#858585", font=editor_font)
+        self.content_gutter.grid(row=0, column=0, sticky="ns", pady=2)
+        self.content_text = ctk.CTkTextbox(content_wrapper, corner_radius=0, fg_color="transparent", border_width=0, undo=True, font=editor_font, wrap="none")
+        self.content_text.grid(row=0, column=1, sticky="nsew")
+        self.content_text._y_scrollbar.configure(width=0)
+        self.content_text._x_scrollbar.configure(width=0)
+
+        # Placeholder logic for Step 2
+        # Refined Ghost Placeholder for Step 2
+        self.content_ghost = ctk.CTkLabel(content_wrapper, text=CONTENT_PLACEHOLDER, text_color=("gray60", "gray40"), fg_color="transparent", font=editor_font, justify="left", anchor="nw")
+        self.content_ghost.grid(row=0, column=1, sticky="nw", padx=10, pady=5)
+        self.content_ghost.bind("<Button-1>", lambda e: self.content_text.focus_set())
+
+        self.content_text.bind("<KeyRelease>", lambda e: self._update_ghosts(), add="+")
+
+        # Bindings
+        pad_y = self.content_text._textbox.cget("pady")
+        self.content_gutter.configure(pady=pad_y)
+        self.titles_gutter.configure(pady=pad_y)
+        
         self.content_text.bind("<KeyRelease>", self.refresh_line_gutters)
         self.content_text.bind("<MouseWheel>", lambda e: self.after(10, lambda: self.sync_gutter_scroll(self.content_text, self.content_gutter)))
-        self.content_text.bind("<Return>", self.refresh_line_gutters)
-        self.content_text.bind("<BackSpace>", self.refresh_line_gutters)
-        self.content_text._textbox.bind("<Configure>", lambda e: self.sync_gutter_scroll(self.content_text, self.content_gutter))
-
         self.titles_text.bind("<KeyRelease>", self.refresh_line_gutters)
         self.titles_text.bind("<MouseWheel>", lambda e: self.after(10, lambda: self.sync_gutter_scroll(self.titles_text, self.titles_gutter)))
-        self.titles_text.bind("<Return>", self.refresh_line_gutters)
-        self.titles_text.bind("<BackSpace>", self.refresh_line_gutters)
-        self.titles_text._textbox.bind("<Configure>", lambda e: self.sync_gutter_scroll(self.titles_text, self.titles_gutter))
 
-        # Placeholder bindings removed to prevent focus-based emoji deletion
-        # self.content_text.bind("<FocusIn>", ...) 
-        # self.content_text.bind("<FocusOut>", ...) 
+        # Next Buttons - Large & Clear
+        btn_font = ctk.CTkFont(size=14, weight="bold")
+        self.btn_next1 = ctk.CTkButton(self.pages["titles"], text="Next: Content Editor →", height=45, corner_radius=10, font=btn_font, command=lambda: self.show_page("content"))
+        self.btn_next1.grid(row=3, column=0, sticky="e", pady=(20, 0))
         
-        self.tab_settings.grid_columnconfigure(0, weight=1)
-        settings_card = ctk.CTkFrame(self.tab_settings, corner_radius=15)
-        settings_card.pack(fill="x", padx=20, pady=20)
-        row1 = ctk.CTkFrame(settings_card, fg_color="transparent")
-        row1.pack(fill="x", padx=20, pady=15)
-        self.prefix_entry = ctk.CTkEntry(row1, textvariable=self.prefix, width=150)
-        self.prefix_entry.pack(side="left", padx=(10, 30))
-        self.start_num_entry = ctk.CTkEntry(row1, textvariable=self.start_num, width=100)
-        self.start_num_entry.pack(side="left")
-        row2 = ctk.CTkFrame(settings_card, fg_color="transparent")
-        row2.pack(fill="x", padx=20, pady=(0, 20))
-        self.output_folder_entry = ctk.CTkEntry(row2, textvariable=self.output_folder)
-        self.output_folder_entry.pack(side="left", fill="x", expand=True, padx=(10, 10))
-        self.browse_btn = ctk.CTkButton(row2, text="Browse", width=80, command=self.browse_dir)
-        self.browse_btn.pack(side="right")
+        self.btn_next2 = ctk.CTkButton(self.pages["content"], text="Next: PDF Settings →", height=45, corner_radius=10, font=btn_font, command=lambda: self.show_page("settings"))
+        self.btn_next2.grid(row=3, column=0, sticky="e", pady=(20, 0))
 
-        font_row = ctk.CTkFrame(settings_card, fg_color="transparent")
-        font_row.pack(fill="x", padx=20, pady=(0, 20))
-        ctk.CTkLabel(font_row, text="PDF Export Font:", font=ctk.CTkFont(size=13)).pack(side="left")
+        # Build Page 3: Settings
+        settings_header = ctk.CTkLabel(self.pages["settings"], text="Step 3: PDF Global Settings", font=ctk.CTkFont(size=20, weight="bold"))
+        settings_header.grid(row=0, column=0, sticky="w", padx=5, pady=(0, 5))
+        
+        # Header Divider
+        ctk.CTkFrame(self.pages["settings"], height=2, fg_color=("gray85", "gray25"), corner_radius=0).grid(row=1, column=0, sticky="ew", pady=(0, 20))
+        
+        settings_container = ctk.CTkFrame(self.pages["settings"], corner_radius=20, fg_color=unified_bg, border_width=1, border_color=("#E0E0E0", "#333333"))
+        settings_container.grid(row=2, column=0, sticky="nsew", padx=0, pady=0)
+        settings_container.grid_columnconfigure(0, weight=1)
+        
+        # Grid organized settings with more padding
+        s_row1 = ctk.CTkFrame(settings_container, fg_color="transparent")
+        s_row1.pack(fill="x", padx=30, pady=(30, 15))
+        ctk.CTkLabel(s_row1, text="Filename Prefix:", font=ctk.CTkFont(weight="bold", size=13)).pack(side="left", padx=10)
+        self.prefix_entry = ctk.CTkEntry(s_row1, textvariable=self.prefix, width=250, height=38)
+        self.prefix_entry.pack(side="left", padx=10)
+        ctk.CTkLabel(s_row1, text="Start Number:", font=ctk.CTkFont(weight="bold", size=13)).pack(side="left", padx=(30, 10))
+        self.start_num_entry = ctk.CTkEntry(s_row1, textvariable=self.start_num, width=120, height=38)
+        self.start_num_entry.pack(side="left", padx=10)
+
+        s_row2 = ctk.CTkFrame(settings_container, fg_color="transparent")
+        s_row2.pack(fill="x", padx=30, pady=15)
+        ctk.CTkLabel(s_row2, text="Output Folder:", font=ctk.CTkFont(weight="bold", size=13)).pack(side="left", padx=10)
+        self.output_folder_entry = ctk.CTkEntry(s_row2, textvariable=self.output_folder, height=38)
+        self.output_folder_entry.pack(side="left", fill="x", expand=True, padx=10)
+        self.browse_btn = ctk.CTkButton(s_row2, text="Browse", width=100, height=38, command=self.browse_dir)
+        self.browse_btn.pack(side="left", padx=10)
+
+        s_row3 = ctk.CTkFrame(settings_container, fg_color="transparent")
+        s_row3.pack(fill="x", padx=30, pady=(15, 30))
+        ctk.CTkLabel(s_row3, text="PDF Font Family:", font=ctk.CTkFont(weight="bold", size=13)).pack(side="left", padx=10)
         font_values = ["Auto"] + list(self.font_map.keys())
-        self.font_menu = ctk.CTkOptionMenu(font_row, values=font_values, variable=self.pdf_font, command=self.on_font_change)
+        self.font_menu = ctk.CTkOptionMenu(s_row3, values=font_values, variable=self.pdf_font, height=38, command=self.on_font_change)
         self.font_menu._open_dropdown_menu = lambda *args: ScrollableDropdown(self.font_menu, font_values, self.on_font_change, self.pdf_font)
-        self.font_menu.pack(side="left", padx=(10, 10), fill="x", expand=True)
-        ctk.CTkLabel(font_row, text="Auto uses built-in PDF fonts unless a custom font is required.", font=ctk.CTkFont(size=12), text_color="gray60").pack(side="left")
+        self.font_menu.pack(side="left", fill="x", expand=True, padx=10)
 
-        self.tab_console.grid_columnconfigure(0, weight=1)
-        self.tab_console.grid_rowconfigure(1, weight=1)
-        self.progress_bar = ctk.CTkProgressBar(self.tab_console, height=12)
-        self.progress_bar.grid(row=0, column=0, padx=20, pady=20, sticky="ew")
-        self.log_text = ctk.CTkTextbox(self.tab_console, corner_radius=10, font=ctk.CTkFont(family="Consolas", size=13))
-        self.log_text.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
+        self.btn_next3 = ctk.CTkButton(self.pages["settings"], text="Ready to Generate! Go to Console →", height=45, corner_radius=10, font=btn_font, command=lambda: self.show_page("console"))
+        self.btn_next3.grid(row=3, column=0, sticky="e", pady=(20, 0))
+
+        # Build Page 4: Console
+        console_header = ctk.CTkLabel(self.pages["console"], text="Step 4: System Generation Console", font=ctk.CTkFont(size=20, weight="bold"))
+        console_header.grid(row=0, column=0, sticky="w", padx=5, pady=(0, 5))
+
+        # Header Divider
+        ctk.CTkFrame(self.pages["console"], height=2, fg_color=("gray85", "gray25"), corner_radius=0).grid(row=1, column=0, sticky="ew", pady=(0, 20))
+
+        self.log_text = ctk.CTkTextbox(self.pages["console"], corner_radius=15, font=ctk.CTkFont(family="Consolas", size=13), border_width=1, border_color=("#E0E0E0", "#333333"))
+        self.log_text.grid(row=2, column=0, sticky="nsew", pady=(0, 15))
+        
+        # Idle state content
+        self.log_text.configure(state="normal")
+        self.log_text.insert("end", "SYSTEM STATUS: IDLE\n")
+        self.log_text.insert("end", "-"*40 + "\n")
+        self.log_text.insert("end", "1. Ensure Titles are provided in Step 1.\n")
+        self.log_text.insert("end", "2. Ensure Markdown Content is ready in Step 2.\n")
+        self.log_text.insert("end", "3. Click 'START BATCH GENERATION' below to begin.\n")
         self.log_text.configure(state="disabled")
+
+        self.console_run_btn = ctk.CTkButton(self.pages["console"], text="▶ START BATCH GENERATION", height=50, corner_radius=12, font=ctk.CTkFont(size=15, weight="bold"), command=self.start_generation)
+        self.console_run_btn.grid(row=3, column=0, sticky="ew", pady=(20, 0))
+
+        self.pages["console"].grid_rowconfigure(2, weight=1)
+
+        # No progress bar anymore, so we remove the logic from run_generation later
+        self.progress_bar = None 
+
+        # Initialize view
+        self.show_page("titles")
 
     def update_activation_state(self, activated):
         self.is_activated = activated
+        btn_state = "normal" if activated else "disabled"
+        
         if activated:
             self.activation_card.grid_remove()
-            self.generate_btn.configure(state="normal")
-            self.content_text.configure(state="normal")
-            self.titles_text.configure(state="normal")
-            self.prefix_entry.configure(state="normal")
-            self.start_num_entry.configure(state="normal")
-            self.output_folder_entry.configure(state="normal")
-            self.browse_btn.configure(state="normal")
-            self.activation_key_entry.delete(0, "end")
             self.status_badge.configure(text="● SYSTEM READY", text_color="#2ECC71")
         else:
             self.activation_card.grid()
-            self.generate_btn.configure(state="disabled")
-            self.content_text.configure(state="disabled")
-            self.titles_text.configure(state="disabled")
-            self.prefix_entry.configure(state="disabled")
-            self.start_num_entry.configure(state="disabled")
-            self.output_folder_entry.configure(state="disabled")
-            self.browse_btn.configure(state="disabled")
             self.status_badge.configure(text="● ACTIVATION REQUIRED", text_color="#E74C3C")
 
-    def add_placeholder(self, widget, placeholder):
-        val = widget.get("1.0", "end-1c").strip()
-        if not val:
-            widget.delete("1.0", "end")
-            widget.insert("1.0", placeholder)
-            widget.configure(text_color="gray40")
-            self.refresh_line_gutters()
+        # Update all action buttons
+        for btn in [self.console_run_btn, self.btn_next1, self.btn_next2, self.btn_next3]:
+            if hasattr(self, btn.winfo_name()):
+                btn.configure(state=btn_state)
+
+        # Update inputs
+        self.content_text.configure(state=btn_state)
+        self.titles_text.configure(state=btn_state)
+        self.prefix_entry.configure(state=btn_state)
+        self.start_num_entry.configure(state=btn_state)
+        self.output_folder_entry.configure(state=btn_state)
+        self.browse_btn.configure(state=btn_state)
+        if activated:
+            self.activation_key_entry.delete(0, "end")
+
+    def _update_ghosts(self):
+        if hasattr(self, 'titles_text') and hasattr(self, 'titles_ghost'):
+            if self.titles_text.get("1.0", "end-1c").strip():
+                self.titles_ghost.grid_remove()
+            else:
+                self.titles_ghost.grid()
+        
+        if hasattr(self, 'content_text') and hasattr(self, 'content_ghost'):
+            if self.content_text.get("1.0", "end-1c").strip():
+                self.content_ghost.grid_remove()
+            else:
+                self.content_ghost.grid()
+
 
     def update_gutter(self, text_widget, gutter_widget):
         content = text_widget.get("1.0", "end-1c")
@@ -622,6 +739,24 @@ class AutoContentPro(ctk.CTk):
 
     def on_font_change(self, value):
         self.save_settings()
+        self.refresh_font_menu()
+
+    def refresh_font_menu(self):
+        if not hasattr(self, 'font_menu'): return
+        recent = self.pdf_font.get()
+        all_fonts = sorted(list(self.font_map.keys()))
+        if recent in all_fonts:
+            all_fonts.remove(recent)
+        
+        # New order: Auto, Recent (if not Auto), then everything else
+        new_values = ["Auto"]
+        if recent != "Auto":
+            new_values.append(recent)
+        new_values.extend(all_fonts)
+        
+        # Update dropdown values and re-bind with new order
+        self.font_menu.configure(values=new_values)
+        self.font_menu._open_dropdown_menu = lambda *args: ScrollableDropdown(self.font_menu, new_values, self.on_font_change, self.pdf_font)
 
     def clear_placeholder(self, widget, placeholder):
         # Only clear if it's precisely the placeholder text
@@ -638,6 +773,25 @@ class AutoContentPro(ctk.CTk):
         if dirname:
             self.output_folder.set(dirname)
             self.save_settings()
+
+    def show_page(self, page_name):
+        # Hide all pages
+        for page in self.pages.values():
+            page.grid_forget()
+        
+        # Show selected
+        self.pages[page_name].grid(row=1, column=0, sticky="nsew")
+        
+        # Update sidebar button styling
+        for btn, name in [(self.btn_titles, "titles"), (self.btn_content, "content"), (self.btn_settings, "settings"), (self.btn_console, "console")]:
+            if name == page_name:
+                btn.configure(fg_color=("#E5E5E5", "#333333"), text_color=("#3B8ED0", "#FFFFFF"))
+            else:
+                btn.configure(fg_color="transparent", text_color=("gray20", "gray90"))
+
+    def toggle_theme(self):
+        new_mode = "Dark" if self.theme_switch.get() else "Light"
+        self.change_appearance_mode(new_mode)
 
     def change_appearance_mode(self, mode):
         ctk.set_appearance_mode(mode)
@@ -663,20 +817,20 @@ class AutoContentPro(ctk.CTk):
         content = self.settings.get("content")
         if content:
             self.content_text.insert("1.0", content)
-        else:
-            self.add_placeholder(self.content_text, CONTENT_PLACEHOLDER)
+            
         titles = self.settings.get("titles")
         if titles:
             self.titles_text.insert("1.0", titles)
-        else:
-            self.add_placeholder(self.titles_text, TITLES_PLACEHOLDER)
+
         self.refresh_line_gutters()
+        self.refresh_font_menu()
+        self._update_ghosts()
 
     def start_generation(self):
         self.save_settings()
-        self.generate_btn.configure(state="disabled", text="RUNNING...")
+        self.console_run_btn.configure(state="disabled", text="RUNNING...")
         self.status_badge.configure(text="● GENERATING", text_color="#F1C40F")
-        self.tabview.set("🖥️ SYSTEM CONSOLE")
+        self.show_page("console")
         self.log_text.configure(state="normal")
         self.log_text.delete("1.0", "end")
         self.log_text.configure(state="disabled")
@@ -711,7 +865,7 @@ class AutoContentPro(ctk.CTk):
                 filepath = output_dir / filename
                 self.build_pdf(filepath, title, raw_content)
                 progress = (i + 1) / total
-                self.after(0, lambda p=progress, m=f"SUCCESS: {filename}": [self.progress_bar.set(p), self.log(m)])
+                self.after(0, lambda p=progress, m=f"SUCCESS: {filename}": [self.progress_bar.set(p) if self.progress_bar else None, self.log(m)])
             self.after(0, lambda: [
                 self.status_badge.configure(text="● SYSTEM READY", text_color="#2ECC71"),
                 messagebox.showinfo("AutoContent Pro", "Batch complete!")
@@ -724,7 +878,7 @@ class AutoContentPro(ctk.CTk):
                 messagebox.showerror("Error", m)
             ])
         finally:
-            self.after(0, lambda: self.generate_btn.configure(state="normal", text="GENERATE NOW"))
+            self.after(0, lambda: self.console_run_btn.configure(state="normal", text="▶ START BATCH GENERATION"))
 
     def build_pdf(self, filepath, title, raw_markdown):
         from fpdf.fonts import FontFace
@@ -740,7 +894,7 @@ class AutoContentPro(ctk.CTk):
             font_family = "helvetica"
             
             def add_font_with_bold(family, reg_path):
-                pdf.add_font(family, "", str(reg_path), uni=True)
+                pdf.add_font(family, "", str(reg_path))
                 # Intelligent search for bold variant on Windows/System
                 p = Path(reg_path)
                 candidates = [
@@ -757,10 +911,10 @@ class AutoContentPro(ctk.CTk):
                         break
                 
                 if bold_path:
-                    pdf.add_font(family, "B", str(bold_path), uni=True)
+                    pdf.add_font(family, "B", str(bold_path))
                 else:
                     # Fallback to same file if no bold found
-                    pdf.add_font(family, "B", str(reg_path), uni=True)
+                    pdf.add_font(family, "B", str(reg_path))
 
             if use_fallback:
                 font_path = get_unicode_font_path(font_map)
