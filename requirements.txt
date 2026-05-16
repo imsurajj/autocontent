@@ -3,3 +3,4 @@ python-dotenv
 markdown
 customtkinter
 packaging
+watchdog

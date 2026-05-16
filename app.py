@@ -272,6 +272,48 @@ class AutoContentPro(ctk.CTk):
         self.is_activated = False
 
         self.check_license()
+        self.start_periodic_check()
+
+    def start_periodic_check(self):
+        """Schedules the background license verification."""
+        self.after(300000, self.start_periodic_check) # Check every 5 minutes
+        self.periodic_verify()
+
+    def periodic_verify(self):
+        """Verifies license status in the background without blocking the UI."""
+        if not self.is_activated:
+            return
+
+        license_path = self.get_license_path()
+        if not license_path.exists():
+            self.update_activation_state(False)
+            return
+
+        try:
+            with open(license_path, "r") as f:
+                data = json.load(f)
+                user_key = data.get("key", "")
+                
+            hwid = self.get_hwid()
+            req_data = json.dumps({"key": user_key, "hwid": hwid}).encode('utf-8')
+            
+            def run_check():
+                try:
+                    req = urllib.request.Request(LICENSE_API_URL + "/verify", data=req_data, headers={'Content-Type': 'application/json'})
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        result = json.loads(response.read().decode('utf-8'))
+                        if result.get("status") != "success":
+                            self.after(0, lambda: self.update_activation_state(False))
+                except urllib.error.HTTPError as e:
+                    if e.code in [401, 403]:
+                        self.after(0, lambda: self.update_activation_state(False))
+                except Exception:
+                    # Network issues shouldn't immediately lock the user out if they were previously activated
+                    pass
+
+            threading.Thread(target=run_check, daemon=True).start()
+        except:
+            pass
 
     def normalize_key(self, key):
         normalized = re.sub(r"[\s\-]+", "", key).upper()
@@ -524,24 +566,29 @@ class AutoContentPro(ctk.CTk):
         self.content_inner.grid_columnconfigure(0, weight=1)
         self.content_inner.grid_rowconfigure(1, weight=1)
 
-        # Activation System (Dashboard Styled)
-        self.activation_card = ctk.CTkFrame(self.main_container, corner_radius=20, fg_color=unified_bg, border_width=1, border_color=("#E0E0E0", "#333333"))
-        self.activation_card.grid(row=0, column=0, sticky="ew", pady=(0, 25), padx=0)
+        # Activation System (Integrated Top Section)
+        self.activation_card = ctk.CTkFrame(self.main_container, corner_radius=0, fg_color=("#FFF4F2", "#2D1B19"), border_width=0)
+        self.activation_card.grid(row=0, column=0, sticky="ew", pady=0, padx=0)
         self.activation_card.grid_columnconfigure(0, weight=1)
         
-        ctk.CTkLabel(self.activation_card, text="PRO ACTIVATION REQUIRED", font=ctk.CTkFont(size=15, weight="bold"), text_color="#E74C3C").grid(row=0, column=0, padx=25, pady=(20, 10), sticky="w")
+        # Add a subtle separator at the bottom of the section
+        self.activation_sep = ctk.CTkFrame(self.activation_card, height=1, fg_color=("#FFC5BC", "#4A2A27"))
+        self.activation_sep.grid(row=5, column=0, sticky="ew", pady=(10, 0))
+
+        ctk.CTkLabel(self.activation_card, text="PRO ACTIVATION REQUIRED", font=ctk.CTkFont(size=14, weight="bold"), text_color="#E74C3C").grid(row=0, column=0, padx=30, pady=(20, 5), sticky="w")
         
-        # Internal Divider for consistency
-        ctk.CTkFrame(self.activation_card, height=2, fg_color=("gray85", "gray25"), corner_radius=0).grid(row=1, column=0, sticky="ew", padx=25, pady=(0, 15))
-        
-        self.activation_key_entry = ctk.CTkEntry(self.activation_card, placeholder_text="Enter your license key to unlock pro features...", show="•", height=42, font=ctk.CTkFont(family="Consolas", size=13), border_width=1, corner_radius=10)
-        self.activation_key_entry.grid(row=2, column=0, padx=25, pady=(0, 15), sticky="ew")
+        self.activation_key_entry = ctk.CTkEntry(self.activation_card, placeholder_text="Enter license key...", show="•", height=40, font=ctk.CTkFont(family="Consolas", size=13), border_width=1, corner_radius=8)
+        self.activation_key_entry.grid(row=2, column=0, padx=30, pady=(5, 10), sticky="ew")
         self.activation_key_entry.bind("<Return>", lambda e: self.verify_license())
         
-        self.activation_submit_btn = ctk.CTkButton(self.activation_card, text="UNLOCK PRO FEATURES", command=self.verify_license, fg_color="#3B8ED0", hover_color="#2B6DA0", height=45, font=ctk.CTkFont(size=14, weight="bold"), corner_radius=10)
-        self.activation_submit_btn.grid(row=3, column=0, padx=25, pady=(0, 15), sticky="w")
+        # Row 3: Button and info text side by side
+        btn_info_frame = ctk.CTkFrame(self.activation_card, fg_color="transparent")
+        btn_info_frame.grid(row=3, column=0, padx=30, pady=(0, 20), sticky="ew")
         
-        ctk.CTkLabel(self.activation_card, text="Your license key activates all features for 30 days. No internet required for validation.", font=ctk.CTkFont(size=11), text_color="gray60").grid(row=4, column=0, padx=25, pady=(0, 20), sticky="w")
+        self.activation_submit_btn = ctk.CTkButton(btn_info_frame, text="ACTIVATE PRO", command=self.verify_license, fg_color="#E74C3C", hover_color="#C0392B", height=38, width=150, font=ctk.CTkFont(size=12, weight="bold"), corner_radius=8)
+        self.activation_submit_btn.pack(side="left")
+        
+        ctk.CTkLabel(btn_info_frame, text="Your key has expired or was revoked. Enter a valid key to restore access.", font=ctk.CTkFont(size=11), text_color=("gray40", "gray60")).pack(side="left", padx=20)
 
         # Page Frames
         self.pages = {}
