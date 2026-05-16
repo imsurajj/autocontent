@@ -37,8 +37,6 @@ def get_unicode_font_path(font_map=None, requested_font=None):
     if sys.platform.startswith("win"):
         candidates += [
             Path("C:/Windows/Fonts/arialuni.ttf"),
-            Path("C:/Windows/Fonts/ARIALUNI.TTF"),
-            Path("C:/Windows/Fonts/seguiemj.ttf"),
             Path("C:/Windows/Fonts/DejaVuSans.ttf"),
             Path("C:/Windows/Fonts/arial.ttf"),
             Path("C:/Windows/Fonts/verdana.ttf"),
@@ -53,7 +51,6 @@ def get_unicode_font_path(font_map=None, requested_font=None):
         candidates += [
             Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
             Path("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf"),
-            Path("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"),
             Path("/usr/share/fonts/truetype/freefont/FreeSans.ttf"),
         ]
 
@@ -349,7 +346,7 @@ class AutoContentPro(ctk.CTk):
         for path in (SETTINGS_FILE, LEGACY_SETTINGS_FILE):
             if path.exists():
                 try:
-                    with open(path, "r") as f:
+                    with open(path, "r", encoding="utf-8") as f:
                         return {**DEFAULT_SETTINGS, **json.load(f)}
                 except:
                     pass
@@ -373,8 +370,8 @@ class AutoContentPro(ctk.CTk):
             "content": content,
             "titles": titles
         }
-        with open(SETTINGS_FILE, "w") as f:
-            json.dump(current_data, f, indent=4)
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(current_data, f, ensure_ascii=False, indent=4)
 
     def setup_ui(self):
         self.sidebar_frame = ctk.CTkFrame(self, width=220, corner_radius=0)
@@ -523,6 +520,10 @@ class AutoContentPro(ctk.CTk):
         self.titles_text.bind("<BackSpace>", self.refresh_line_gutters)
         self.titles_text._textbox.bind("<Configure>", lambda e: self.sync_gutter_scroll(self.titles_text, self.titles_gutter))
 
+        # Placeholder bindings removed to prevent focus-based emoji deletion
+        # self.content_text.bind("<FocusIn>", ...) 
+        # self.content_text.bind("<FocusOut>", ...) 
+        
         self.tab_settings.grid_columnconfigure(0, weight=1)
         settings_card = ctk.CTkFrame(self.tab_settings, corner_radius=15)
         settings_card.pack(fill="x", padx=20, pady=20)
@@ -582,7 +583,7 @@ class AutoContentPro(ctk.CTk):
 
     def add_placeholder(self, widget, placeholder):
         val = widget.get("1.0", "end-1c").strip()
-        if not val or val == placeholder:
+        if not val:
             widget.delete("1.0", "end")
             widget.insert("1.0", placeholder)
             widget.configure(text_color="gray40")
@@ -623,9 +624,12 @@ class AutoContentPro(ctk.CTk):
         self.save_settings()
 
     def clear_placeholder(self, widget, placeholder):
-        if widget.get("1.0", "end-1c") == placeholder:
+        # Only clear if it's precisely the placeholder text
+        content = widget.get("1.0", "end-1c")
+        if content == placeholder:
             widget.delete("1.0", "end")
-            text_color = ctk.ThemeManager.theme.get("CTkTextbox", {}).get("text_color", "#000000")
+            mode_idx = 1 if ctk.get_appearance_mode() == "Dark" else 0
+            text_color = ctk.ThemeManager.theme.get("CTkTextbox", {}).get("text_color", ["#000000", "#FFFFFF"])[mode_idx]
             widget.configure(text_color=text_color)
             self.refresh_line_gutters()
 
@@ -734,20 +738,42 @@ class AutoContentPro(ctk.CTk):
             pdf.add_page()
             
             font_family = "helvetica"
+            
+            def add_font_with_bold(family, reg_path):
+                pdf.add_font(family, "", str(reg_path), uni=True)
+                # Intelligent search for bold variant on Windows/System
+                p = Path(reg_path)
+                candidates = [
+                    p.parent / (p.stem + "bd" + p.suffix),   # e.g., arialbd.ttf
+                    p.parent / (p.stem + "b" + p.suffix),    # e.g., verdanab.ttf
+                    p.parent / (p.stem + "-Bold" + p.suffix),# e.g., DejaVuSans-Bold.ttf
+                    p.parent / (p.stem + "Bold" + p.suffix), # e.g., CalibriBold.ttf
+                    p.parent / (p.stem + "_Bold" + p.suffix) # e.g., Custom_Bold.ttf
+                ]
+                bold_path = None
+                for c in candidates:
+                    if c.exists():
+                        bold_path = c
+                        break
+                
+                if bold_path:
+                    pdf.add_font(family, "B", str(bold_path), uni=True)
+                else:
+                    # Fallback to same file if no bold found
+                    pdf.add_font(family, "B", str(reg_path), uni=True)
+
             if use_fallback:
                 font_path = get_unicode_font_path(font_map)
                 if font_path is None:
                     raise RuntimeError("No fallback unicode font found.")
                 font_family = "AutoContentUnicode"
-                pdf.add_font(font_family, "", str(font_path), uni=True)
-                pdf.add_font(font_family, "B", str(font_path), uni=True)
+                add_font_with_bold(font_family, font_path)
             elif selected_font and selected_font != "Auto":
                 font_path = get_unicode_font_path(font_map, selected_font)
                 if font_path is None:
                     raise RuntimeError(f"Selected PDF font '{selected_font}' was not found on this system.")
                 font_family = selected_font
-                pdf.add_font(font_family, "", str(font_path), uni=True)
-                pdf.add_font(font_family, "B", str(font_path), uni=True)
+                add_font_with_bold(font_family, font_path)
             
             pdf.set_font(font_family, style="B", size=20)
             
