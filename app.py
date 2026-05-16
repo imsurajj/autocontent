@@ -28,8 +28,13 @@ if getattr(sys, 'frozen', False):
 else:
     EXE_DIR = Path(__file__).resolve().parent
 
-SETTINGS_FILE = EXE_DIR / "settings.json"
-LICENSE_FILE = EXE_DIR / "license.key"
+USER_DATA_DIR = Path(os.getenv("APPDATA") or Path.home() / "AppData" / "Roaming") / "AutoContent Pro"
+USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+SETTINGS_FILE = USER_DATA_DIR / "settings.json"
+LICENSE_FILE = USER_DATA_DIR / "license.key"
+LEGACY_SETTINGS_FILE = EXE_DIR / "settings.json"
+LEGACY_LICENSE_FILE = EXE_DIR / "license.key"
 LOGO_PATH = get_resource_path(os.path.join("image", "logo.png"))
 ICON_PATH = get_resource_path(os.path.join("image", "logo.ico"))
 
@@ -49,7 +54,7 @@ TITLES_PLACEHOLDER = "Example Title 1\nExample Title 2\nExample Title 3"
 
 # Default fallback settings
 DEFAULT_SETTINGS = {
-    "output_folder": str(EXE_DIR / "output_pdfs"),
+    "output_folder": str(USER_DATA_DIR / "output_pdfs"),
     "prefix": "doc",
     "start_num": "1",
     "appearance_mode": "Dark",
@@ -84,11 +89,19 @@ class AutoContentPro(ctk.CTk):
         normalized = re.sub(r"[\s\-]+", "", key).upper()
         return normalized
 
+    def get_license_path(self):
+        if LICENSE_FILE.exists():
+            return LICENSE_FILE
+        if LEGACY_LICENSE_FILE.exists():
+            return LEGACY_LICENSE_FILE
+        return LICENSE_FILE
+
     def check_license(self):
         is_valid = False
-        if LICENSE_FILE.exists():
+        license_path = self.get_license_path()
+        if license_path.exists():
             try:
-                with open(LICENSE_FILE, "r") as f:
+                with open(license_path, "r") as f:
                     data = json.load(f)
                     activation_date_str = data.get("date", "")
                     license_hash = data.get("key", "")
@@ -97,7 +110,7 @@ class AutoContentPro(ctk.CTk):
                     else:
                         activation_date = datetime.strptime(activation_date_str, "%Y-%m-%d")
                     
-                    if (license_hash == KEY_HASH or license_hash == "VALIDATED") and datetime.now() < activation_date + timedelta(days=LICENSE_DURATION_DAYS):
+                    if license_hash == KEY_HASH and datetime.now() < activation_date + timedelta(days=LICENSE_DURATION_DAYS):
                         is_valid = True
             except Exception:
                 pass
@@ -162,7 +175,7 @@ class AutoContentPro(ctk.CTk):
         
         if user_hash == KEY_HASH:
             with open(LICENSE_FILE, "w") as f:
-                json.dump({"date": datetime.now().isoformat(), "key": "VALIDATED"}, f)
+                json.dump({"date": datetime.now().isoformat(), "key": user_hash}, f)
             self.update_activation_state(True)
             threading.Thread(target=self.check_for_updates, daemon=True).start()
         else:
@@ -185,12 +198,13 @@ class AutoContentPro(ctk.CTk):
         self.update_activation_state(self.is_activated)
 
     def load_settings(self):
-        if SETTINGS_FILE.exists():
-            try:
-                with open(SETTINGS_FILE, "r") as f:
-                    return {**DEFAULT_SETTINGS, **json.load(f)}
-            except:
-                return DEFAULT_SETTINGS
+        for path in (SETTINGS_FILE, LEGACY_SETTINGS_FILE):
+            if path.exists():
+                try:
+                    with open(path, "r") as f:
+                        return {**DEFAULT_SETTINGS, **json.load(f)}
+                except:
+                    pass
         return DEFAULT_SETTINGS
 
     def save_settings(self):

@@ -70,12 +70,12 @@ var
   DateStr: String;
   FileContent: String;
 begin
-  LicensePath := ExpandConstant('{app}\license.key');
+  LicensePath := ExpandConstant('{userappdata}\AutoContent Pro\license.key');
   // Format current date for the app to read
   DateStr := GetDateTimeString('yyyy-mm-dd', '-', '-');
   DateStr := DateStr + 'T' + GetDateTimeString('hh:nn:ss', ':', ':');
   
-  FileContent := '{"date": "' + DateStr + '", "key": "VALIDATED"}';
+  FileContent := '{"date": "' + DateStr + '", "key": "d98d6111195555816560a714cbdd9bda62ff006f7fd4757ba188b3852cbedb27"}';
   
   // Create the directory if it doesn't exist (safety)
   ForceDirectories(ExtractFilePath(LicensePath));
