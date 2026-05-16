@@ -15,6 +15,101 @@ from PIL import Image
 from fpdf import FPDF
 from markdown import markdown
 
+# Unicode font support for PDF export
+def get_unicode_font_path(font_map=None, requested_font=None):
+    if requested_font and requested_font != "Auto" and font_map:
+        requested_path = font_map.get(requested_font)
+        if requested_path and requested_path.exists():
+            return requested_path
+
+    if requested_font and requested_font != "Auto" and font_map:
+        for candidate in font_map.values():
+            try:
+                if candidate and candidate.exists():
+                    return candidate
+            except Exception:
+                continue
+
+    candidates = []
+    # Embedded or project font file path if bundled with the app
+    candidates.append(Path(get_resource_path(os.path.join("fonts", "DejaVuSans.ttf"))))
+
+    if sys.platform.startswith("win"):
+        candidates += [
+            Path("C:/Windows/Fonts/arialuni.ttf"),
+            Path("C:/Windows/Fonts/ARIALUNI.TTF"),
+            Path("C:/Windows/Fonts/seguiemj.ttf"),
+            Path("C:/Windows/Fonts/DejaVuSans.ttf"),
+            Path("C:/Windows/Fonts/arial.ttf"),
+            Path("C:/Windows/Fonts/verdana.ttf"),
+        ]
+    elif sys.platform == "darwin":
+        candidates += [
+            Path("/Library/Fonts/Arial Unicode.ttf"),
+            Path("/Library/Fonts/DejaVuSans.ttf"),
+            Path("/Library/Fonts/NotoSans-Regular.ttf"),
+        ]
+    else:
+        candidates += [
+            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+            Path("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf"),
+            Path("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"),
+            Path("/usr/share/fonts/truetype/freefont/FreeSans.ttf"),
+        ]
+
+    for candidate in candidates:
+        try:
+            if candidate and candidate.exists():
+                return candidate
+        except Exception:
+            continue
+    return None
+
+
+def scan_system_fonts():
+    font_dirs = []
+    font_map = {}
+
+    resource_fonts = Path(get_resource_path(os.path.join("fonts")))
+    if resource_fonts.exists() and resource_fonts.is_dir():
+        font_dirs.append(resource_fonts)
+
+    if sys.platform.startswith("win"):
+        font_dirs.append(Path("C:/Windows/Fonts"))
+    elif sys.platform == "darwin":
+        font_dirs += [
+            Path("/Library/Fonts"),
+            Path("~/Library/Fonts").expanduser()
+        ]
+    else:
+        font_dirs += [
+            Path("/usr/share/fonts"),
+            Path("/usr/local/share/fonts"),
+            Path("~/.local/share/fonts").expanduser(),
+            Path("~/.fonts").expanduser()
+        ]
+
+    valid_exts = {".ttf", ".otf", ".ttc"}
+    for font_dir in font_dirs:
+        try:
+            if font_dir.exists():
+                for font_file in font_dir.rglob("*"):
+                    if font_file.suffix.lower() in valid_exts and font_file.is_file():
+                        display_name = font_file.stem
+                        duplicate = 1
+                        while display_name in font_map:
+                            duplicate += 1
+                            display_name = f"{font_file.stem} ({duplicate})"
+                        font_map[display_name] = font_file
+        except Exception:
+            continue
+
+    return font_map
+
+
+def contains_unicode(text):
+    return bool(re.search(r"[^\x00-]", text))
+
 # Initialize environment
 def get_resource_path(relative_path):
     try:
@@ -58,9 +153,57 @@ DEFAULT_SETTINGS = {
     "prefix": "doc",
     "start_num": "1",
     "appearance_mode": "Dark",
+    "pdf_font": "Auto",
     "content": "",
     "titles": ""
 }
+
+class ScrollableDropdown(ctk.CTkToplevel):
+    def __init__(self, widget, values, command=None, variable=None):
+        super().__init__()
+        self.overrideredirect(True)
+        self.wm_attributes("-topmost", True)
+        self.widget = widget
+        self.values = values
+        self.command = command
+        self.variable = variable
+
+        # Show exactly 10 items if more than 10
+        item_height = 30
+        max_items = 10
+        height = min(len(values), max_items) * item_height + 15
+        width = widget.winfo_width()
+        
+        # Position right below the option menu
+        x = widget.winfo_rootx()
+        y = widget.winfo_rooty() + widget.winfo_height()
+        self.geometry(f"{width}x{height}+{x}+{y}")
+        
+        mode_idx = 1 if ctk.get_appearance_mode() == "Dark" else 0
+        
+        self.frame = ctk.CTkScrollableFrame(self, fg_color=ctk.ThemeManager.theme["CTkFrame"]["fg_color"][mode_idx], corner_radius=5)
+        self.frame.pack(expand=True, fill="both")
+        
+        for val in values:
+            btn = ctk.CTkButton(
+                self.frame, text=val, fg_color="transparent", anchor="w", 
+                text_color=ctk.ThemeManager.theme["CTkLabel"]["text_color"][mode_idx],
+                hover_color=ctk.ThemeManager.theme["CTkButton"]["hover_color"][mode_idx],
+                command=lambda v=val: self.select(v),
+                height=28
+            )
+            btn.pack(fill="x", pady=1, padx=2)
+            
+        self.focus_set()
+        self.bind("<FocusOut>", lambda e: self.destroy())
+        
+    def select(self, value):
+        if self.variable:
+            self.variable.set(value)
+        self.widget.set(value)
+        if self.command:
+            self.command(value)
+        self.destroy()
 
 class AutoContentPro(ctk.CTk):
     def __init__(self):
@@ -77,6 +220,11 @@ class AutoContentPro(ctk.CTk):
 
         self.settings = self.load_settings()
         self.appearance_mode = tk.StringVar(value=self.settings.get("appearance_mode"))
+        self.font_map = scan_system_fonts()
+        default_font = self.settings.get("pdf_font", "Auto")
+        if default_font != "Auto" and default_font not in self.font_map:
+            default_font = "Auto"
+        self.pdf_font = tk.StringVar(value=default_font)
         ctk.set_appearance_mode(self.appearance_mode.get())
 
         self.grid_columnconfigure(0, weight=1)
@@ -221,6 +369,7 @@ class AutoContentPro(ctk.CTk):
             "prefix": self.prefix.get(),
             "start_num": self.start_num.get(),
             "appearance_mode": self.appearance_mode.get(),
+            "pdf_font": self.pdf_font.get(),
             "content": content,
             "titles": titles
         }
@@ -270,14 +419,110 @@ class AutoContentPro(ctk.CTk):
         self.tab_editor.grid_columnconfigure(0, weight=1)
         self.tab_editor.grid_columnconfigure(1, weight=1)
         self.tab_editor.grid_rowconfigure(1, weight=1)
-        self.content_text = ctk.CTkTextbox(self.tab_editor, corner_radius=10, undo=True)
-        self.content_text.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
-        self.content_text.bind("<FocusIn>", lambda e: self.clear_placeholder(self.content_text, CONTENT_PLACEHOLDER))
-        self.content_text.bind("<FocusOut>", lambda e: self.add_placeholder(self.content_text, CONTENT_PLACEHOLDER))
-        self.titles_text = ctk.CTkTextbox(self.tab_editor, corner_radius=10, undo=True)
-        self.titles_text.grid(row=1, column=1, padx=10, pady=10, sticky="nsew")
-        self.titles_text.bind("<FocusIn>", lambda e: self.clear_placeholder(self.titles_text, TITLES_PLACEHOLDER))
-        self.titles_text.bind("<FocusOut>", lambda e: self.add_placeholder(self.titles_text, TITLES_PLACEHOLDER))
+
+        content_frame = ctk.CTkFrame(self.tab_editor, fg_color="transparent")
+        content_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+        content_frame.grid_columnconfigure(1, weight=1)
+        content_frame.grid_rowconfigure(1, weight=1)
+
+        self.titles_frame = ctk.CTkFrame(self.tab_editor, fg_color="transparent")
+        self.titles_frame.grid(row=1, column=1, padx=10, pady=10, sticky="nsew")
+        self.titles_frame.grid_columnconfigure(1, weight=1)
+        self.titles_frame.grid_rowconfigure(1, weight=1)
+
+        # Fetch theme colors
+        bg_color_dynamic = ctk.ThemeManager.theme.get("CTkTextbox", {}).get("fg_color", ["#F9F9FA", "#1D1E1E"])
+        mode_idx = 1 if ctk.get_appearance_mode() == "Dark" else 0
+        bg_color_static = bg_color_dynamic[mode_idx] if isinstance(bg_color_dynamic, list) else bg_color_dynamic
+
+        # Add heading to the content box
+        content_heading = ctk.CTkLabel(
+            content_frame,
+            text="Markdown Content",
+            font=ctk.CTkFont(family="Consolas", size=14, weight="bold")
+        )
+        content_heading.grid(row=0, column=0, columnspan=2, sticky="w", padx=5, pady=(5, 5))
+
+        # Shared font ensures identical pixel sizes between tk.Text and ctk.CTkTextbox
+        editor_font = ctk.CTkFont(family="Consolas", size=14)
+
+        # Wrapper to make them look like a single input
+        content_wrapper = ctk.CTkFrame(content_frame, corner_radius=10, fg_color=bg_color_dynamic, border_width=0)
+        content_wrapper.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=(5, 0))
+        content_wrapper.grid_columnconfigure(1, weight=1)
+        content_wrapper.grid_rowconfigure(0, weight=1)
+
+        self.content_gutter = tk.Text(
+            content_wrapper,
+            width=4,
+            padx=5,
+            pady=0,
+            wrap="none",
+            bd=0,
+            highlightthickness=0,
+            bg=bg_color_static,
+            fg="#858585",  # Faded numbering like VS Code
+            font=editor_font,
+            state="normal"
+        )
+        self.content_gutter.grid(row=0, column=0, sticky="ns", pady=2)
+        self.content_text = ctk.CTkTextbox(content_wrapper, corner_radius=0, fg_color="transparent", border_width=0, undo=True, font=editor_font, wrap="none")
+        self.content_text.grid(row=0, column=1, sticky="nsew")
+        self.content_text._y_scrollbar.configure(width=0)
+        self.content_text._x_scrollbar.configure(width=0)
+        
+        # Perfect padding match
+        pad_y = self.content_text._textbox.cget("pady")
+        self.content_gutter.configure(pady=pad_y)
+
+        # Add heading to the titles box
+        titles_heading = ctk.CTkLabel(
+            self.titles_frame,
+            text="Document Titles",
+            font=ctk.CTkFont(family="Consolas", size=14, weight="bold")
+        )
+        titles_heading.grid(row=0, column=0, columnspan=2, sticky="w", padx=5, pady=(5, 5))
+
+        titles_wrapper = ctk.CTkFrame(self.titles_frame, corner_radius=10, fg_color=bg_color_dynamic, border_width=0)
+        titles_wrapper.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=(5, 0))
+        titles_wrapper.grid_columnconfigure(1, weight=1)
+        titles_wrapper.grid_rowconfigure(0, weight=1)
+
+        self.titles_gutter = tk.Text(
+            titles_wrapper,
+            width=4,
+            padx=5,
+            pady=0,
+            wrap="none",
+            bd=0,
+            highlightthickness=0,
+            bg=bg_color_static,
+            fg="#858585",
+            font=editor_font,
+            state="normal"
+        )
+        self.titles_gutter.grid(row=0, column=0, sticky="ns", pady=2)
+        self.titles_text = ctk.CTkTextbox(titles_wrapper, corner_radius=0, fg_color="transparent", border_width=0, undo=True, font=editor_font, wrap="none")
+        self.titles_text.grid(row=0, column=1, sticky="nsew")
+        self.titles_text._y_scrollbar.configure(width=0)
+        self.titles_text._x_scrollbar.configure(width=0)
+        
+        # Perfect padding match
+        self.titles_gutter.configure(pady=pad_y)
+
+        # Bindings for updating line numbers
+        self.content_text.bind("<KeyRelease>", self.refresh_line_gutters)
+        self.content_text.bind("<MouseWheel>", lambda e: self.after(10, lambda: self.sync_gutter_scroll(self.content_text, self.content_gutter)))
+        self.content_text.bind("<Return>", self.refresh_line_gutters)
+        self.content_text.bind("<BackSpace>", self.refresh_line_gutters)
+        self.content_text._textbox.bind("<Configure>", lambda e: self.sync_gutter_scroll(self.content_text, self.content_gutter))
+
+        self.titles_text.bind("<KeyRelease>", self.refresh_line_gutters)
+        self.titles_text.bind("<MouseWheel>", lambda e: self.after(10, lambda: self.sync_gutter_scroll(self.titles_text, self.titles_gutter)))
+        self.titles_text.bind("<Return>", self.refresh_line_gutters)
+        self.titles_text.bind("<BackSpace>", self.refresh_line_gutters)
+        self.titles_text._textbox.bind("<Configure>", lambda e: self.sync_gutter_scroll(self.titles_text, self.titles_gutter))
+
         self.tab_settings.grid_columnconfigure(0, weight=1)
         settings_card = ctk.CTkFrame(self.tab_settings, corner_radius=15)
         settings_card.pack(fill="x", padx=20, pady=20)
@@ -293,6 +538,16 @@ class AutoContentPro(ctk.CTk):
         self.output_folder_entry.pack(side="left", fill="x", expand=True, padx=(10, 10))
         self.browse_btn = ctk.CTkButton(row2, text="Browse", width=80, command=self.browse_dir)
         self.browse_btn.pack(side="right")
+
+        font_row = ctk.CTkFrame(settings_card, fg_color="transparent")
+        font_row.pack(fill="x", padx=20, pady=(0, 20))
+        ctk.CTkLabel(font_row, text="PDF Export Font:", font=ctk.CTkFont(size=13)).pack(side="left")
+        font_values = ["Auto"] + list(self.font_map.keys())
+        self.font_menu = ctk.CTkOptionMenu(font_row, values=font_values, variable=self.pdf_font, command=self.on_font_change)
+        self.font_menu._open_dropdown_menu = lambda *args: ScrollableDropdown(self.font_menu, font_values, self.on_font_change, self.pdf_font)
+        self.font_menu.pack(side="left", padx=(10, 10), fill="x", expand=True)
+        ctk.CTkLabel(font_row, text="Auto uses built-in PDF fonts unless a custom font is required.", font=ctk.CTkFont(size=12), text_color="gray60").pack(side="left")
+
         self.tab_console.grid_columnconfigure(0, weight=1)
         self.tab_console.grid_rowconfigure(1, weight=1)
         self.progress_bar = ctk.CTkProgressBar(self.tab_console, height=12)
@@ -331,11 +586,48 @@ class AutoContentPro(ctk.CTk):
             widget.delete("1.0", "end")
             widget.insert("1.0", placeholder)
             widget.configure(text_color="gray40")
+            self.refresh_line_gutters()
+
+    def update_gutter(self, text_widget, gutter_widget):
+        content = text_widget.get("1.0", "end-1c")
+        if content.strip() == CONTENT_PLACEHOLDER or not content.strip():
+            current_lines = 0
+        else:
+            try:
+                current_lines = int(text_widget.index("end-1c").split(".")[0])
+            except Exception:
+                current_lines = content.count("\n") + 1
+        total_lines = current_lines + 5 if current_lines > 0 else 5
+        line_text = "\n".join(str(i) for i in range(1, total_lines + 1)) + "\n"
+        gutter_widget.configure(state="normal")
+        gutter_widget.delete("1.0", "end")
+        gutter_widget.insert("1.0", line_text)
+        gutter_widget.configure(state="disabled")
+        try:
+            gutter_widget.yview_moveto(text_widget.yview()[0])
+        except Exception:
+            pass
+
+    def refresh_line_gutters(self, event=None):
+        if hasattr(self, 'content_gutter') and hasattr(self, 'titles_gutter'):
+            self.update_gutter(self.content_text, self.content_gutter)
+            self.update_gutter(self.titles_text, self.titles_gutter)
+
+    def sync_gutter_scroll(self, text_widget, gutter_widget, event=None):
+        try:
+            gutter_widget.yview_moveto(text_widget.yview()[0])
+        except Exception:
+            pass
+
+    def on_font_change(self, value):
+        self.save_settings()
 
     def clear_placeholder(self, widget, placeholder):
         if widget.get("1.0", "end-1c") == placeholder:
             widget.delete("1.0", "end")
-            widget.configure(text_color=ctk.ThemeManager.theme["CTkTextbox"]["text_color"])
+            text_color = ctk.ThemeManager.theme.get("CTkTextbox", {}).get("text_color", "#000000")
+            widget.configure(text_color=text_color)
+            self.refresh_line_gutters()
 
     def browse_dir(self):
         dirname = filedialog.askdirectory()
@@ -346,6 +638,16 @@ class AutoContentPro(ctk.CTk):
     def change_appearance_mode(self, mode):
         ctk.set_appearance_mode(mode)
         self.save_settings()
+        
+        # Update static colors for tk.Text gutters
+        mode_idx = 1 if ctk.get_appearance_mode() == "Dark" else 0
+        bg_color_dynamic = ctk.ThemeManager.theme.get("CTkTextbox", {}).get("fg_color", ["#F9F9FA", "#1D1E1E"])
+        bg_color_static = bg_color_dynamic[mode_idx] if isinstance(bg_color_dynamic, list) else bg_color_dynamic
+        
+        if hasattr(self, 'content_gutter'):
+            self.content_gutter.configure(bg=bg_color_static)
+        if hasattr(self, 'titles_gutter'):
+            self.titles_gutter.configure(bg=bg_color_static)
 
     def log(self, message):
         self.log_text.configure(state="normal")
@@ -364,6 +666,7 @@ class AutoContentPro(ctk.CTk):
             self.titles_text.insert("1.0", titles)
         else:
             self.add_placeholder(self.titles_text, TITLES_PLACEHOLDER)
+        self.refresh_line_gutters()
 
     def start_generation(self):
         self.save_settings()
@@ -421,26 +724,64 @@ class AutoContentPro(ctk.CTk):
 
     def build_pdf(self, filepath, title, raw_markdown):
         from fpdf.fonts import FontFace
-        pdf = FPDF()
-        pdf.set_auto_page_break(auto=True, margin=20)
-        pdf.add_page()
-        pdf.set_font("helvetica", "B", 20)
-        pdf.multi_cell(0, 12, title)
-        pdf.set_draw_color(59, 142, 208)
-        pdf.set_line_width(0.8)
-        pdf.ln(2)
-        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-        pdf.ln(10)
-        md_clean = re.sub(r"^#\s+.*", "", raw_markdown, count=1, flags=re.MULTILINE)
-        html_content = markdown(md_clean, extensions=['extra', 'sane_lists'])
-        tag_styles = {
-            "h2": FontFace(emphasis="B", size_pt=16, color=(26, 26, 46)),
-            "h3": FontFace(emphasis="B", size_pt=14, color=(26, 26, 46)),
-            "p": FontFace(size_pt=12, color=(40, 40, 40)),
-            "li": FontFace(size_pt=12, color=(40, 40, 40)),
-            "blockquote": FontFace(emphasis="I", size_pt=11, color=(85, 85, 85))
-        }
-        pdf.write_html(f'<font face="helvetica" size="12">{html_content}</font>', tag_styles=tag_styles)
+        
+        selected_font = self.pdf_font.get() if hasattr(self, 'pdf_font') else "Auto"
+        font_map = getattr(self, 'font_map', {})
+
+        def generate(use_fallback=False):
+            pdf = FPDF()
+            pdf.set_auto_page_break(auto=True, margin=20)
+            pdf.add_page()
+            
+            font_family = "helvetica"
+            if use_fallback:
+                font_path = get_unicode_font_path(font_map)
+                if font_path is None:
+                    raise RuntimeError("No fallback unicode font found.")
+                font_family = "AutoContentUnicode"
+                pdf.add_font(font_family, "", str(font_path), uni=True)
+                pdf.add_font(font_family, "B", str(font_path), uni=True)
+            elif selected_font and selected_font != "Auto":
+                font_path = get_unicode_font_path(font_map, selected_font)
+                if font_path is None:
+                    raise RuntimeError(f"Selected PDF font '{selected_font}' was not found on this system.")
+                font_family = selected_font
+                pdf.add_font(font_family, "", str(font_path), uni=True)
+                pdf.add_font(font_family, "B", str(font_path), uni=True)
+            
+            pdf.set_font(font_family, style="B", size=20)
+            
+            # Faux bold by overprinting slightly to the right to guarantee bold effect
+            x = pdf.get_x()
+            y = pdf.get_y()
+            pdf.multi_cell(0, 12, title)
+            pdf.set_xy(x + 0.3, y)
+            pdf.multi_cell(0, 12, title)
+            
+            pdf.set_draw_color(59, 142, 208)
+            pdf.set_line_width(0.8)
+            pdf.ln(2)
+            pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+            pdf.ln(10)
+            
+            md_clean = re.sub(r"^#\s+.*", "", raw_markdown, count=1, flags=re.MULTILINE)
+            html_content = markdown(md_clean, extensions=['extra', 'sane_lists'])
+            tag_styles = {
+                "h1": FontFace(emphasis="B", size_pt=20, color=(26, 26, 46)),
+                "h2": FontFace(emphasis="B", size_pt=16, color=(26, 26, 46)),
+                "h3": FontFace(emphasis="B", size_pt=14, color=(26, 26, 46)),
+                "p": FontFace(size_pt=12, color=(40, 40, 40)),
+                "li": FontFace(size_pt=12, color=(40, 40, 40)),
+                "blockquote": FontFace(emphasis="I", size_pt=11, color=(85, 85, 85))
+            }
+            pdf.write_html(html_content, tag_styles=tag_styles)
+            return pdf
+
+        try:
+            pdf = generate(use_fallback=False)
+        except Exception:
+            pdf = generate(use_fallback=True)
+            
         pdf.output(str(filepath))
 
     def on_closing(self):
