@@ -46,7 +46,7 @@ You can now easily manage all your licenses directly from your web browser using
 
 ### 1. Add a New Key
 Generate a new key for a user and track their name and license duration. You can add `?name=...` and `?duration=...` (in days) to the end of the URL.
-`https://imsuraj.pythonanywhere.com/admin/add_key/TEAM-A-1234?name=John+Doe&duration=60`
+`https://imsuraj.pythonanywhere.com/admin/add_key/TEAM-A-1234?name=John+Doe&duratio=60`
 *(Use a `+` instead of spaces for the name. You will see a message saying "Key added successfully". You can now give this key to your team member.)*
 
 ### 2. See All Keys & Statuses
