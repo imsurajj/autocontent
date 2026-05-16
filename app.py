@@ -2,112 +2,16 @@ import os
 import re
 import sys
 import json
-import hashlib
 import threading
 import urllib.request
 import webbrowser
-import tkinter as tk
 from datetime import datetime, timedelta
 from pathlib import Path
-from tkinter import filedialog, messagebox
-import customtkinter as ctk
-from PIL import Image
 from fpdf import FPDF
 from markdown import markdown
+import webview
 
-# Unicode font support for PDF export
-def get_unicode_font_path(font_map=None, requested_font=None):
-    if requested_font and requested_font != "Auto" and font_map:
-        requested_path = font_map.get(requested_font)
-        if requested_path and requested_path.exists():
-            return requested_path
-
-    if requested_font and requested_font != "Auto" and font_map:
-        for candidate in font_map.values():
-            try:
-                if candidate and candidate.exists():
-                    return candidate
-            except Exception:
-                continue
-
-    candidates = []
-    # Embedded or project font file path if bundled with the app
-    candidates.append(Path(get_resource_path(os.path.join("fonts", "DejaVuSans.ttf"))))
-
-    if sys.platform.startswith("win"):
-        candidates += [
-            Path("C:/Windows/Fonts/arialuni.ttf"),
-            Path("C:/Windows/Fonts/DejaVuSans.ttf"),
-            Path("C:/Windows/Fonts/arial.ttf"),
-            Path("C:/Windows/Fonts/verdana.ttf"),
-        ]
-    elif sys.platform == "darwin":
-        candidates += [
-            Path("/Library/Fonts/Arial Unicode.ttf"),
-            Path("/Library/Fonts/DejaVuSans.ttf"),
-            Path("/Library/Fonts/NotoSans-Regular.ttf"),
-        ]
-    else:
-        candidates += [
-            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
-            Path("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf"),
-            Path("/usr/share/fonts/truetype/freefont/FreeSans.ttf"),
-        ]
-
-    for candidate in candidates:
-        try:
-            if candidate and candidate.exists():
-                return candidate
-        except Exception:
-            continue
-    return None
-
-
-def scan_system_fonts():
-    font_dirs = []
-    font_map = {}
-
-    resource_fonts = Path(get_resource_path(os.path.join("fonts")))
-    if resource_fonts.exists() and resource_fonts.is_dir():
-        font_dirs.append(resource_fonts)
-
-    if sys.platform.startswith("win"):
-        font_dirs.append(Path("C:/Windows/Fonts"))
-    elif sys.platform == "darwin":
-        font_dirs += [
-            Path("/Library/Fonts"),
-            Path("~/Library/Fonts").expanduser()
-        ]
-    else:
-        font_dirs += [
-            Path("/usr/share/fonts"),
-            Path("/usr/local/share/fonts"),
-            Path("~/.local/share/fonts").expanduser(),
-            Path("~/.fonts").expanduser()
-        ]
-
-    valid_exts = {".ttf", ".otf", ".ttc"}
-    for font_dir in font_dirs:
-        try:
-            if font_dir.exists():
-                for font_file in font_dir.rglob("*"):
-                    if font_file.suffix.lower() in valid_exts and font_file.is_file():
-                        display_name = font_file.stem
-                        duplicate = 1
-                        while display_name in font_map:
-                            duplicate += 1
-                            display_name = f"{font_file.stem} ({duplicate})"
-                        font_map[display_name] = font_file
-        except Exception:
-            continue
-
-    return font_map
-
-
-def contains_unicode(text):
-    return bool(re.search(r"[^\x00-\x7F]", text))
-
-# Initialize environment
+# Initialize environment for PyInstaller
 def get_resource_path(relative_path):
     try:
         base_path = sys._MEIPASS
@@ -125,945 +29,184 @@ USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 SETTINGS_FILE = USER_DATA_DIR / "settings.json"
 LICENSE_FILE = USER_DATA_DIR / "license.key"
-LEGACY_SETTINGS_FILE = EXE_DIR / "settings.json"
-LEGACY_LICENSE_FILE = EXE_DIR / "license.key"
-LOGO_PATH = get_resource_path(os.path.join("image", "logo.png"))
-ICON_PATH = get_resource_path(os.path.join("image", "logo.ico"))
-
-# App Meta
 APP_VERSION = "2.0.0"
-VERSION_URL = "https://raw.githubusercontent.com/imsurajj/autocontent/main/version.json"
-
-# Security Config (Server Licensing)
-# Replace with your actual PythonAnywhere URL once you set it up.
 LICENSE_API_URL = "https://imsuraj.pythonanywhere.com"
-LICENSE_DURATION_DAYS = 30
 
-# Placeholders
-TITLES_PLACEHOLDER = "Enter your document titles here (one per line)...\nExample: Project Report\nExample: Invoice #101"
-CONTENT_PLACEHOLDER = "# Main Header\n\nWrite your content here using Markdown:\n\n- Use **text** for bold\n- Use *text* for italics\n- Use - for bullet points\n- Use 1. for numbered lists\n\n> This is a quote section.\n\nEnjoy generating your PDFs!"
-
-# Default fallback settings
 DEFAULT_SETTINGS = {
     "output_folder": str(USER_DATA_DIR / "output_pdfs"),
     "prefix": "doc",
     "start_num": "1",
-    "appearance_mode": "Dark",
     "pdf_font": "Auto",
     "content": "",
     "titles": ""
 }
 
-class ScrollableDropdown(ctk.CTkToplevel):
-    def __init__(self, widget, values, command=None, variable=None):
-        super().__init__()
-        self.overrideredirect(True)
-        self.wm_attributes("-topmost", True)
-        self.widget = widget
-        self.all_values = values
-        self.command = command
-        self.variable = variable
-
-        # Background color matching the app
-        bg_color = ctk.ThemeManager.theme.get("CTkFrame", {}).get("fg_color", ["#F9F9F9", "#1A1B1B"])[1 if ctk.get_appearance_mode() == "Dark" else 0]
-        text_color = ("black", "white")[1 if ctk.get_appearance_mode() == "Dark" else 0]
-        self.configure(fg_color=bg_color)
-        
-        # Container with a nice border
-        self.container = ctk.CTkFrame(self, fg_color=bg_color, corner_radius=10, border_width=1, border_color=("gray80", "gray30"))
-        self.container.pack(fill="both", expand=True)
-
-        # Search bar at the top
-        self.search_var = tk.StringVar()
-        self.search_var.trace_add("write", self._filter_list)
-        self.search_entry = ctk.CTkEntry(self.container, placeholder_text="Search font...", textvariable=self.search_var, height=30, corner_radius=5, border_width=1)
-        self.search_entry.pack(fill="x", padx=10, pady=(10, 5))
-
-        self.canvas = tk.Canvas(self.container, bg=bg_color, highlightthickness=0)
-        self.scrollbar = ctk.CTkScrollbar(self.container, orientation="vertical", width=12, command=self.canvas.yview)
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
-        
-        self.listbox = tk.Listbox(
-            self.canvas, 
-            bg=bg_color,
-            fg=text_color,
-            font=ctk.CTkFont(size=12),
-            borderwidth=0,
-            highlightthickness=0,
-            selectbackground="#3B8ED0",
-            selectforeground="white",
-            activestyle="none",
-            exportselection=False
-        )
-        
-        self.scrollbar.pack(side="right", fill="y", padx=(0, 5), pady=5)
-        self.canvas.pack(side="left", fill="both", expand=True, padx=5, pady=5)
-        self.canvas.create_window((0, 0), window=self.listbox, anchor="nw")
-
-        self._update_listbox(self.all_values)
-
-        # Position it accurately
-        self.wait_visibility()
-        x = widget.winfo_rootx()
-        y = widget.winfo_rooty() + widget.winfo_height() + 2
-        width = widget.winfo_width()
-        height = 350
-        
-        screen_height = self.winfo_screenheight()
-        if y + height > screen_height:
-            y = widget.winfo_rooty() - height - 2
-
-        self.geometry(f"{width}x{height}+{x}+{y}")
-        self.listbox.config(width=width)
-
-        self.listbox.bind("<<ListboxSelect>>", self._on_select)
-        self.bind("<FocusOut>", lambda e: self.destroy())
-        self.search_entry.focus_set()
-
-    def _update_listbox(self, values):
-        self.listbox.delete(0, "end")
-        self.current_values = values
-        for val in values:
-            self.listbox.insert("end", f" {val}")
-
-    def _filter_list(self, *args):
-        search_term = self.search_var.get().lower()
-        if not search_term:
-            self._update_listbox(self.all_values)
-        else:
-            filtered = [v for v in self.all_values if search_term in v.lower()]
-            self._update_listbox(filtered)
-
-    def _on_select(self, event):
-        if not self.listbox.curselection(): return
-        index = self.listbox.curselection()[0]
-        value = self.current_values[index]
-        if self.variable:
-            self.variable.set(value)
-        self.widget.set(value)
-        if self.command:
-            self.command(value)
-        self.destroy()
-
-class AutoContentPro(ctk.CTk):
-    def __init__(self):
-        super().__init__()
-
-        self.title(f"AutoContent Pro — Ultimate Engine v{APP_VERSION}")
-        self.geometry("1100x750")
-        
-        try:
-            if os.path.exists(ICON_PATH):
-                self.iconbitmap(ICON_PATH)
-        except:
-            pass
-
-        self.settings = self.load_settings()
-        self.appearance_mode = tk.StringVar(value=self.settings.get("appearance_mode"))
-        self.font_map = scan_system_fonts()
-        default_font = self.settings.get("pdf_font", "Auto")
-        if default_font != "Auto" and default_font not in self.font_map:
-            default_font = "Auto"
-        self.pdf_font = tk.StringVar(value=default_font)
-        ctk.set_appearance_mode(self.appearance_mode.get())
-
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=1)
+class Api:
+    def __init__(self, window):
+        self.window = window
+        self.is_generating = False
         self.is_activated = False
+        self.settings = self.load_settings()
 
-        self.check_license()
-        self.start_periodic_check()
+    def load_settings(self):
+        if SETTINGS_FILE.exists():
+            try:
+                with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    return {**DEFAULT_SETTINGS, **json.load(f)}
+            except: pass
+        return DEFAULT_SETTINGS
 
-    def start_periodic_check(self):
-        """Schedules the background license verification."""
-        self.after(300000, self.start_periodic_check) # Check every 5 minutes
-        self.periodic_verify()
+    def save_settings_internal(self, data):
+        self.settings.update(data)
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(self.settings, f, ensure_ascii=False, indent=4)
 
-    def periodic_verify(self):
-        """Verifies license status in the background without blocking the UI."""
-        if not self.is_activated:
-            return
+    def select_folder(self):
+        result = self.window.create_file_dialog(webview.FOLDER_DIALOG)
+        if result:
+            return result[0]
+        return None
 
-        license_path = self.get_license_path()
-        if not license_path.exists():
-            self.update_activation_state(False)
-            return
-
-        try:
-            with open(license_path, "r") as f:
-                data = json.load(f)
-                user_key = data.get("key", "")
-                
-            hwid = self.get_hwid()
-            req_data = json.dumps({"key": user_key, "hwid": hwid}).encode('utf-8')
-            
-            def run_check():
-                try:
-                    req = urllib.request.Request(LICENSE_API_URL + "/verify", data=req_data, headers={'Content-Type': 'application/json'})
-                    with urllib.request.urlopen(req, timeout=10) as response:
-                        result = json.loads(response.read().decode('utf-8'))
-                        if result.get("status") != "success":
-                            self.after(0, lambda: self.update_activation_state(False))
-                except urllib.error.HTTPError as e:
-                    if e.code in [401, 403]:
-                        self.after(0, lambda: self.update_activation_state(False))
-                except Exception:
-                    # Network issues shouldn't immediately lock the user out if they were previously activated
-                    pass
-
-            threading.Thread(target=run_check, daemon=True).start()
-        except:
-            pass
-
-    def normalize_key(self, key):
-        normalized = re.sub(r"[\s\-]+", "", key).upper()
-        return normalized
-
-    def get_hwid(self):
-        import uuid
-        return str(uuid.getnode())
-
-    def get_license_path(self):
+    def deactivate(self):
+        """Removes license and notifies backend to release the key."""
         if LICENSE_FILE.exists():
-            return LICENSE_FILE
-        if LEGACY_LICENSE_FILE.exists():
-            return LEGACY_LICENSE_FILE
-        return LICENSE_FILE
-
-    def check_license(self):
-        is_valid = False
-        license_path = self.get_license_path()
-        if license_path.exists():
             try:
-                with open(license_path, "r") as f:
+                # 1. Read the key to notify backend
+                with open(LICENSE_FILE, "r") as f:
                     data = json.load(f)
-                    activation_date_str = data.get("date", "")
-                    user_key = data.get("key", "")
-                    if "T" in activation_date_str:
-                        activation_date = datetime.fromisoformat(activation_date_str)
-                    else:
-                        activation_date = datetime.strptime(activation_date_str, "%Y-%m-%d")
-                    
-                    try:
-                        hwid = self.get_hwid()
-                        req_data = json.dumps({"key": user_key, "hwid": hwid}).encode('utf-8')
-                        req = urllib.request.Request(LICENSE_API_URL + "/verify", data=req_data, headers={'Content-Type': 'application/json'})
-                        with urllib.request.urlopen(req, timeout=5) as response:
-                            result = json.loads(response.read().decode('utf-8'))
-                            if result.get("status") == "success":
-                                is_valid = True
-                                with open(license_path, "w") as fw:
-                                    json.dump({"date": datetime.now().isoformat(), "key": user_key}, fw)
-                            else:
-                                print(f"License rejected by server: {result.get('message')}")
-                                is_valid = False
-                    except Exception:
-                        if datetime.now() < activation_date + timedelta(days=LICENSE_DURATION_DAYS):
-                            is_valid = True
-            except Exception:
-                pass
-        
-        self.is_activated = is_valid
-        self.show_main_app()
-        if self.is_activated:
-            threading.Thread(target=self.check_for_updates, daemon=True).start()
-
-    def check_for_updates(self):
-        try:
-            with urllib.request.urlopen(VERSION_URL, timeout=5) as response:
-                data = json.loads(response.read().decode())
-                latest_version = data.get("version", APP_VERSION)
-                update_url = data.get("url", "")
-                if latest_version > APP_VERSION:
-                    self.after(0, lambda: self.notify_update(latest_version, update_url))
-        except:
-            pass
-
-    def notify_update(self, version, url):
-        self.log(f"🔔 UPDATE AVAILABLE: v{version}")
-        msg = f"A new version (v{version}) is available!\nWould you like to download it now?"
-        if messagebox.askyesno("Update Available", msg):
-            webbrowser.open(url)
-
-    def show_activation_screen(self):
-        for child in self.winfo_children():
-            child.destroy()
-
-        self.activation_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.activation_frame.grid(row=0, column=0, sticky="nsew")
-        self.activation_frame.grid_columnconfigure(0, weight=1)
-        self.activation_frame.grid_rowconfigure(0, weight=1)
-
-        container = ctk.CTkFrame(self.activation_frame, fg_color="transparent")
-        container.grid(row=0, column=0)
-
-        ctk.CTkLabel(container, text="🛡️", font=ctk.CTkFont(size=80)).pack(pady=(0, 20))
-        ctk.CTkLabel(container, text="Activation Required", font=ctk.CTkFont(size=32, weight="bold")).pack(pady=5)
-        ctk.CTkLabel(container, text="Your license is missing or has expired.\nEnter your key to unlock the Ultimate Engine.", 
-                    font=ctk.CTkFont(size=14), text_color="gray70").pack(pady=(5, 30))
-        
-        self.key_entry = ctk.CTkEntry(container, placeholder_text="Enter Key...", 
-                                     show="•", width=380, height=50, 
-                                     font=ctk.CTkFont(family="Consolas", size=16),
-                                     border_width=1, corner_radius=12)
-        self.key_entry.pack(pady=10)
-        self.key_entry.bind("<Return>", lambda e: self.verify_license())
-        
-        self.activate_btn = ctk.CTkButton(container, text="ACTIVATE NOW", command=self.verify_license, 
-                                         fg_color="#3B8ED0", hover_color="#2B6DA0", 
-                                         height=55, width=300, font=ctk.CTkFont(size=16, weight="bold"),
-                                         corner_radius=15)
-        self.activate_btn.pack(pady=(25, 0))
-        ctk.CTkLabel(container, text="Enter the activation key, not the hidden hash.", 
-                     font=ctk.CTkFont(size=12), text_color="gray60").pack(pady=(10, 0))
-
-    def verify_license(self):
-        try:
-            entry_val = self.activation_key_entry.get()
-        except AttributeError:
-            try:
-                entry_val = self.key_entry.get()
-            except AttributeError:
-                entry_val = ""
+                    old_key = data.get("key")
                 
-        user_key = self.normalize_key(entry_val)
-        if not user_key:
-            messagebox.showerror("Error", "Please enter a key")
-            return
-            
-        hwid = self.get_hwid()
+                # 2. Notify backend
+                if old_key:
+                    try:
+                        import uuid
+                        hwid = str(uuid.getnode())
+                        req_data = json.dumps({"key": old_key, "hwid": hwid}).encode('utf-8')
+                        req = urllib.request.Request(LICENSE_API_URL + "/deactivate", data=req_data, headers={'Content-Type': 'application/json'})
+                        with urllib.request.urlopen(req, timeout=5) as r:
+                            pass # Key released on backend
+                    except: pass 
+
+                # 3. Wipe local license
+                LICENSE_FILE.unlink()
+                self.is_activated = False
+                self.window.evaluate_js("setActivation(false)")
+                return True
+            except: pass
+        return False
+
+    def verify_key(self, key):
+        user_key = re.sub(r"[\s\-]+", "", key).upper()
+        if not user_key: return False
         
         try:
+            import uuid
+            hwid = str(uuid.getnode())
             req_data = json.dumps({"key": user_key, "hwid": hwid}).encode('utf-8')
             req = urllib.request.Request(LICENSE_API_URL + "/verify", data=req_data, headers={'Content-Type': 'application/json'})
             with urllib.request.urlopen(req, timeout=10) as response:
                 result = json.loads(response.read().decode('utf-8'))
+                if result.get("status") == "success":
+                    with open(LICENSE_FILE, "w") as f:
+                        json.dump({"date": datetime.now().isoformat(), "key": user_key}, f)
+                    self.is_activated = True
+                    return True
+        except: pass
+        return False
+
+    def check_initial_license(self):
+        if LICENSE_FILE.exists():
+            try:
+                with open(LICENSE_FILE, "r") as f:
+                    data = json.load(f)
+                    user_key = data.get("key", "")
+                if self.verify_key(user_key):
+                    self.window.evaluate_js("setActivation(true)")
+                    return True
+            except: pass
+        self.window.evaluate_js("setActivation(false)")
+        return False
+
+    def run_batch(self, titles_raw, content_raw, config):
+        if self.is_generating: return {"success": False, "error": "Already running"}
+        self.is_generating = True
+        
+        self.save_settings_internal({
+            "titles": titles_raw,
+            "content": content_raw,
+            **config
+        })
+
+        def worker():
+            try:
+                titles = [t.strip() for t in titles_raw.splitlines() if t.strip()]
+                output_dir = Path(config['output_folder'])
+                output_dir.mkdir(parents=True, exist_ok=True)
+                prefix = config['prefix']
+                start_n = int(config['start_num'])
+                total = len(titles)
+
+                for i, title in enumerate(titles):
+                    file_num = start_n + i
+                    filename = f"{prefix}{file_num:02d}.pdf"
+                    filepath = output_dir / filename
+                    self.build_pdf(filepath, title, content_raw)
+                    self.window.evaluate_js(f"updateLog('Generated: {filename}', 'text-emerald-400')")
                 
-            if result.get("status") == "success":
-                with open(LICENSE_FILE, "w") as f:
-                    json.dump({"date": datetime.now().isoformat(), "key": user_key}, f)
-                self.update_activation_state(True)
-                threading.Thread(target=self.check_for_updates, daemon=True).start()
-                messagebox.showinfo("Success", "Activation Successful!")
-            else:
-                messagebox.showerror("Error", f"Activation Failed: {result.get('message')}")
-        except Exception as e:
-            messagebox.showerror("Connection Error", f"Could not connect to activation server: {str(e)}\n\nPlease ensure you have internet access and the URL is correct.")
+                self.is_generating = False
+                self.window.evaluate_js("updateLog('BATCH COMPLETE: All files saved.', 'text-blue-400')")
+            except Exception as e:
+                self.is_generating = False
+                self.window.evaluate_js(f"updateLog('CRITICAL ERROR: {str(e)}', 'text-rose-400')")
 
-    def show_main_app(self):
-        for child in self.winfo_children():
-            child.destroy()
-        self.grid_columnconfigure(0, weight=0)
-        self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(0, weight=1)
-        self.output_folder = tk.StringVar(value=self.settings.get("output_folder"))
-        self.prefix = tk.StringVar(value=self.settings.get("prefix"))
-        self.start_num = tk.StringVar(value=self.settings.get("start_num"))
-        self.setup_ui()
-        self.restore_work()
-        self.update_activation_state(self.is_activated)
-
-    def load_settings(self):
-        for path in (SETTINGS_FILE, LEGACY_SETTINGS_FILE):
-            if path.exists():
-                try:
-                    with open(path, "r", encoding="utf-8") as f:
-                        return {**DEFAULT_SETTINGS, **json.load(f)}
-                except:
-                    pass
-        return DEFAULT_SETTINGS
-
-    def save_settings(self):
-        if not hasattr(self, 'content_text'):
-            return
-        content = self.content_text.get("1.0", "end-1c")
-        if content == CONTENT_PLACEHOLDER:
-            content = ""
-        titles = self.titles_text.get("1.0", "end-1c")
-        if titles == TITLES_PLACEHOLDER:
-            titles = ""
-        current_data = {
-            "output_folder": self.output_folder.get(),
-            "prefix": self.prefix.get(),
-            "start_num": self.start_num.get(),
-            "appearance_mode": self.appearance_mode.get(),
-            "pdf_font": self.pdf_font.get(),
-            "content": content,
-            "titles": titles
-        }
-        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(current_data, f, ensure_ascii=False, indent=4)
-
-    def setup_ui(self):
-        # Unified background color (Dull white in light mode, Matte charcoal in dark)
-        unified_bg = ("#F9F9F9", "#1A1B1B")
-        self.configure(fg_color=unified_bg)
-
-        self.sidebar_frame = ctk.CTkFrame(self, width=220, corner_radius=0, fg_color=unified_bg, border_width=0)
-        self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
-        self.sidebar_frame.grid_rowconfigure(7, weight=1)
-
-        # Right border for sidebar
-        self.sidebar_border = ctk.CTkFrame(self, width=1, fg_color=("gray85", "gray25"), corner_radius=0)
-        self.sidebar_border.grid(row=0, column=0, sticky="nse")
-        # Sidebar Header (Logo + Text side-by-side with perfect alignment)
-        self.header_frame = ctk.CTkFrame(self.sidebar_frame, fg_color="transparent")
-        self.header_frame.grid(row=0, column=0, padx=20, pady=(30, 20), sticky="nw")
-        
-        try:
-            logo_img = Image.open(LOGO_PATH)
-            self.logo_image = ctk.CTkImage(logo_img, size=(44, 44))
-            self.logo_lbl = ctk.CTkLabel(self.header_frame, image=self.logo_image, text="")
-            self.logo_lbl.grid(row=0, column=0, rowspan=2, padx=(0, 12))
-        except:
-            self.logo_lbl = ctk.CTkLabel(self.header_frame, text="⚡", font=ctk.CTkFont(size=30))
-            self.logo_lbl.grid(row=0, column=0, rowspan=2, padx=(0, 12))
-            
-        self.text_container = ctk.CTkFrame(self.header_frame, fg_color="transparent")
-        self.text_container.grid(row=0, column=1, rowspan=2, sticky="w")
-        
-        ctk.CTkLabel(self.text_container, text="AutoContent Pro", font=ctk.CTkFont(size=18, weight="bold")).pack(anchor="w", pady=0)
-        ctk.CTkLabel(self.text_container, text="ULTIMATE EDITION", font=ctk.CTkFont(size=10, weight="bold"), text_color="#3B8ED0").pack(anchor="w", pady=(0, 0))
-        
-        self.status_badge = ctk.CTkLabel(self.sidebar_frame, text="● SYSTEM READY", font=ctk.CTkFont(size=10, weight="bold"), text_color="#2ECC71")
-        self.status_badge.grid(row=8, column=0, padx=20, pady=5)
-        
-        self.theme_switch = ctk.CTkSwitch(self.sidebar_frame, text="Dark Mode", command=self.toggle_theme)
-        self.theme_switch.grid(row=9, column=0, padx=20, pady=(10, 10))
-        if self.appearance_mode.get() == "Dark":
-            self.theme_switch.select()
-
-        self.version_label = ctk.CTkLabel(self.sidebar_frame, text=f"v{APP_VERSION}", font=ctk.CTkFont(size=10), text_color="gray50")
-        self.version_label.grid(row=10, column=0, padx=20, pady=(0, 20))
-
-        # Navigation Categories
-        self.nav_frame = ctk.CTkFrame(self.sidebar_frame, fg_color="transparent")
-        self.nav_frame.grid(row=4, column=0, sticky="ew", pady=10)
-        self.nav_frame.grid_columnconfigure(0, weight=1)
-
-        # Content Category
-        ctk.CTkLabel(self.nav_frame, text="EDITOR", font=ctk.CTkFont(size=10, weight="bold"), text_color="gray50").grid(row=0, column=0, padx=20, pady=(10, 5), sticky="w")
-        self.btn_titles = ctk.CTkButton(self.nav_frame, text="  Document Titles", anchor="w", height=38, corner_radius=8, fg_color="transparent", text_color=("gray20", "gray90"), hover_color=("gray85", "gray25"), command=lambda: self.show_page("titles"))
-        self.btn_titles.grid(row=1, column=0, padx=10, pady=2, sticky="ew")
-        self.btn_content = ctk.CTkButton(self.nav_frame, text="  Markdown Content", anchor="w", height=38, corner_radius=8, fg_color="transparent", text_color=("gray20", "gray90"), hover_color=("gray85", "gray25"), command=lambda: self.show_page("content"))
-        self.btn_content.grid(row=2, column=0, padx=10, pady=2, sticky="ew")
-
-        # Config Category
-        ctk.CTkLabel(self.nav_frame, text="CONFIGURATION", font=ctk.CTkFont(size=10, weight="bold"), text_color="gray50").grid(row=3, column=0, padx=20, pady=(15, 5), sticky="w")
-        self.btn_settings = ctk.CTkButton(self.nav_frame, text="  PDF Settings", anchor="w", height=38, corner_radius=8, fg_color="transparent", text_color=("gray20", "gray90"), hover_color=("gray85", "gray25"), command=lambda: self.show_page("settings"))
-        self.btn_settings.grid(row=4, column=0, padx=10, pady=2, sticky="ew")
-        self.btn_console = ctk.CTkButton(self.nav_frame, text="  System Console", anchor="w", height=38, corner_radius=8, fg_color="transparent", text_color=("gray20", "gray90"), hover_color=("gray85", "gray25"), command=lambda: self.show_page("console"))
-        self.btn_console.grid(row=5, column=0, padx=10, pady=2, sticky="ew")
-
-        self.main_container = ctk.CTkFrame(self, fg_color=unified_bg, corner_radius=0)
-        self.main_container.grid(row=0, column=1, sticky="nsew", padx=0, pady=0) # Remove padding for unified look
-        self.main_container.grid_columnconfigure(0, weight=1)
-        self.main_container.grid_rowconfigure(1, weight=1)
-
-        # Content internal container to keep some spacing
-        self.content_inner = ctk.CTkFrame(self.main_container, fg_color="transparent")
-        self.content_inner.grid(row=1, column=0, sticky="nsew", padx=30, pady=30)
-        self.content_inner.grid_columnconfigure(0, weight=1)
-        self.content_inner.grid_rowconfigure(1, weight=1)
-
-        # Activation System (Integrated Top Section)
-        self.activation_card = ctk.CTkFrame(self.main_container, corner_radius=0, fg_color=("#FFF4F2", "#2D1B19"), border_width=0)
-        self.activation_card.grid(row=0, column=0, sticky="ew", pady=0, padx=0)
-        self.activation_card.grid_columnconfigure(0, weight=1)
-        
-        # Add a subtle separator at the bottom of the section
-        self.activation_sep = ctk.CTkFrame(self.activation_card, height=1, fg_color=("#FFC5BC", "#4A2A27"))
-        self.activation_sep.grid(row=5, column=0, sticky="ew", pady=(10, 0))
-
-        ctk.CTkLabel(self.activation_card, text="PRO ACTIVATION REQUIRED", font=ctk.CTkFont(size=14, weight="bold"), text_color="#E74C3C").grid(row=0, column=0, padx=30, pady=(20, 5), sticky="w")
-        
-        self.activation_key_entry = ctk.CTkEntry(self.activation_card, placeholder_text="Enter license key...", show="•", height=40, font=ctk.CTkFont(family="Consolas", size=13), border_width=1, corner_radius=8)
-        self.activation_key_entry.grid(row=2, column=0, padx=30, pady=(5, 10), sticky="ew")
-        self.activation_key_entry.bind("<Return>", lambda e: self.verify_license())
-        
-        # Row 3: Button and info text side by side
-        btn_info_frame = ctk.CTkFrame(self.activation_card, fg_color="transparent")
-        btn_info_frame.grid(row=3, column=0, padx=30, pady=(0, 20), sticky="ew")
-        
-        self.activation_submit_btn = ctk.CTkButton(btn_info_frame, text="ACTIVATE PRO", command=self.verify_license, fg_color="#E74C3C", hover_color="#C0392B", height=38, width=150, font=ctk.CTkFont(size=12, weight="bold"), corner_radius=8)
-        self.activation_submit_btn.pack(side="left")
-        
-        ctk.CTkLabel(btn_info_frame, text="Your key has expired or was revoked. Enter a valid key to restore access.", font=ctk.CTkFont(size=11), text_color=("gray40", "gray60")).pack(side="left", padx=20)
-
-        # Page Frames
-        self.pages = {}
-        for name in ["titles", "content", "settings", "console"]:
-            self.pages[name] = ctk.CTkFrame(self.content_inner, corner_radius=15, fg_color="transparent")
-            self.pages[name].grid_columnconfigure(0, weight=1)
-            # Row 0: Header, Row 1: Divider, Row 2: Main Content (Expandable)
-            self.pages[name].grid_rowconfigure(2, weight=1)
-
-        # Build Page 1: Titles
-        titles_header = ctk.CTkLabel(self.pages["titles"], text="Step 1: Document Titles", font=ctk.CTkFont(size=18, weight="bold"))
-        titles_header.grid(row=0, column=0, sticky="w", padx=1, pady=(0, 1))
-        
-        # Header Divider
-        ctk.CTkFrame(self.pages["titles"], height=2, fg_color=("gray85", "gray25"), corner_radius=0).grid(row=1, column=0, sticky="ew", pady=(0, 20))
-
-        # Fetch theme colors for editors
-        bg_color_dynamic = ctk.ThemeManager.theme.get("CTkTextbox", {}).get("fg_color", ["#F9F9FA", "#1D1E1E"])
-        mode_idx = 1 if ctk.get_appearance_mode() == "Dark" else 0
-        bg_color_static = bg_color_dynamic[mode_idx] if isinstance(bg_color_dynamic, list) else bg_color_dynamic
-        editor_font = ctk.CTkFont(family="Consolas", size=14)
-        
-        titles_wrapper = ctk.CTkFrame(self.pages["titles"], corner_radius=10, fg_color=bg_color_dynamic)
-        titles_wrapper.grid(row=2, column=0, sticky="nsew")
-        self.pages["titles"].grid_rowconfigure(2, weight=1)
-        titles_wrapper.grid_columnconfigure(1, weight=1)
-        titles_wrapper.grid_rowconfigure(0, weight=1)
-        
-        self.titles_gutter = tk.Text(titles_wrapper, width=4, padx=5, bd=0, highlightthickness=0, bg=bg_color_static, fg="#858585", font=editor_font)
-        self.titles_gutter.grid(row=0, column=0, sticky="ns", pady=2)
-        self.titles_text = ctk.CTkTextbox(titles_wrapper, corner_radius=0, fg_color="transparent", border_width=0, undo=True, font=editor_font, wrap="none")
-        self.titles_text.grid(row=0, column=1, sticky="nsew")
-        self.titles_text._y_scrollbar.configure(width=0)
-        self.titles_text._x_scrollbar.configure(width=0)
-
-        # Placeholder logic for Step 1
-        # Refined Ghost Placeholder for Step 1
-        self.titles_ghost = ctk.CTkLabel(titles_wrapper, text=TITLES_PLACEHOLDER, text_color=("gray60", "gray40"), fg_color="transparent", font=editor_font, justify="left", anchor="nw")
-        self.titles_ghost.grid(row=0, column=1, sticky="nw", padx=10, pady=5)
-        self.titles_ghost.bind("<Button-1>", lambda e: self.titles_text.focus_set())
-        
-        self.titles_text.bind("<KeyRelease>", lambda e: self._update_ghosts())
-
-        # Build Page 2: Content
-        content_header = ctk.CTkLabel(self.pages["content"], text="Step 2: Markdown Content", font=ctk.CTkFont(size=18, weight="bold"))
-        content_header.grid(row=0, column=0, sticky="w", padx=1, pady=(0, 1))
-        
-        # Header Divider
-        ctk.CTkFrame(self.pages["content"], height=2, fg_color=("gray85", "gray25"), corner_radius=0).grid(row=1, column=0, sticky="ew", pady=(0, 20))
-
-        content_wrapper = ctk.CTkFrame(self.pages["content"], corner_radius=10, fg_color=bg_color_dynamic)
-        content_wrapper.grid(row=2, column=0, sticky="nsew")
-        self.pages["content"].grid_rowconfigure(2, weight=1)
-        content_wrapper.grid_columnconfigure(1, weight=1)
-        content_wrapper.grid_rowconfigure(0, weight=1)
-
-        self.content_gutter = tk.Text(content_wrapper, width=4, padx=5, bd=0, highlightthickness=0, bg=bg_color_static, fg="#858585", font=editor_font)
-        self.content_gutter.grid(row=0, column=0, sticky="ns", pady=2)
-        self.content_text = ctk.CTkTextbox(content_wrapper, corner_radius=0, fg_color="transparent", border_width=0, undo=True, font=editor_font, wrap="none")
-        self.content_text.grid(row=0, column=1, sticky="nsew")
-        self.content_text._y_scrollbar.configure(width=0)
-        self.content_text._x_scrollbar.configure(width=0)
-
-        # Placeholder logic for Step 2
-        # Refined Ghost Placeholder for Step 2
-        self.content_ghost = ctk.CTkLabel(content_wrapper, text=CONTENT_PLACEHOLDER, text_color=("gray60", "gray40"), fg_color="transparent", font=editor_font, justify="left", anchor="nw")
-        self.content_ghost.grid(row=0, column=1, sticky="nw", padx=10, pady=5)
-        self.content_ghost.bind("<Button-1>", lambda e: self.content_text.focus_set())
-
-        self.content_text.bind("<KeyRelease>", lambda e: self._update_ghosts(), add="+")
-
-        # Bindings
-        pad_y = self.content_text._textbox.cget("pady")
-        self.content_gutter.configure(pady=pad_y)
-        self.titles_gutter.configure(pady=pad_y)
-        
-        self.content_text.bind("<KeyRelease>", self.refresh_line_gutters)
-        self.content_text.bind("<MouseWheel>", lambda e: self.after(10, lambda: self.sync_gutter_scroll(self.content_text, self.content_gutter)))
-        self.titles_text.bind("<KeyRelease>", self.refresh_line_gutters)
-        self.titles_text.bind("<MouseWheel>", lambda e: self.after(10, lambda: self.sync_gutter_scroll(self.titles_text, self.titles_gutter)))
-
-        # Next Buttons - Large & Clear
-        btn_font = ctk.CTkFont(size=14, weight="bold")
-        self.btn_next1 = ctk.CTkButton(self.pages["titles"], text="Next: Content Editor →", height=45, corner_radius=10, font=btn_font, command=lambda: self.show_page("content"))
-        self.btn_next1.grid(row=3, column=0, sticky="e", pady=(20, 0))
-        
-        self.btn_next2 = ctk.CTkButton(self.pages["content"], text="Next: PDF Settings →", height=45, corner_radius=10, font=btn_font, command=lambda: self.show_page("settings"))
-        self.btn_next2.grid(row=3, column=0, sticky="e", pady=(20, 0))
-
-        # Build Page 3: Settings
-        settings_header = ctk.CTkLabel(self.pages["settings"], text="Step 3: PDF Global Settings", font=ctk.CTkFont(size=20, weight="bold"))
-        settings_header.grid(row=0, column=0, sticky="w", padx=5, pady=(0, 5))
-        
-        # Header Divider
-        ctk.CTkFrame(self.pages["settings"], height=2, fg_color=("gray85", "gray25"), corner_radius=0).grid(row=1, column=0, sticky="ew", pady=(0, 20))
-        
-        settings_container = ctk.CTkFrame(self.pages["settings"], corner_radius=20, fg_color=unified_bg, border_width=1, border_color=("#E0E0E0", "#333333"))
-        settings_container.grid(row=2, column=0, sticky="nsew", padx=0, pady=0)
-        settings_container.grid_columnconfigure(0, weight=1)
-        
-        # Grid organized settings with more padding
-        s_row1 = ctk.CTkFrame(settings_container, fg_color="transparent")
-        s_row1.pack(fill="x", padx=30, pady=(30, 15))
-        ctk.CTkLabel(s_row1, text="Filename Prefix:", font=ctk.CTkFont(weight="bold", size=13)).pack(side="left", padx=10)
-        self.prefix_entry = ctk.CTkEntry(s_row1, textvariable=self.prefix, width=250, height=38)
-        self.prefix_entry.pack(side="left", padx=10)
-        ctk.CTkLabel(s_row1, text="Start Number:", font=ctk.CTkFont(weight="bold", size=13)).pack(side="left", padx=(30, 10))
-        self.start_num_entry = ctk.CTkEntry(s_row1, textvariable=self.start_num, width=120, height=38)
-        self.start_num_entry.pack(side="left", padx=10)
-
-        s_row2 = ctk.CTkFrame(settings_container, fg_color="transparent")
-        s_row2.pack(fill="x", padx=30, pady=15)
-        ctk.CTkLabel(s_row2, text="Output Folder:", font=ctk.CTkFont(weight="bold", size=13)).pack(side="left", padx=10)
-        self.output_folder_entry = ctk.CTkEntry(s_row2, textvariable=self.output_folder, height=38)
-        self.output_folder_entry.pack(side="left", fill="x", expand=True, padx=10)
-        self.browse_btn = ctk.CTkButton(s_row2, text="Browse", width=100, height=38, command=self.browse_dir)
-        self.browse_btn.pack(side="left", padx=10)
-
-        s_row3 = ctk.CTkFrame(settings_container, fg_color="transparent")
-        s_row3.pack(fill="x", padx=30, pady=(15, 30))
-        ctk.CTkLabel(s_row3, text="Choose PDF Typography:", font=ctk.CTkFont(weight="bold", size=13)).pack(side="left", padx=10)
-        
-        self.font_selector = ctk.CTkSegmentedButton(s_row3, values=["Auto", "Calibri", "Arial", "Helvetica"], variable=self.pdf_font, command=lambda v: self.save_settings(), height=38, font=ctk.CTkFont(size=12, weight="bold"))
-        self.font_selector.pack(side="left", fill="x", expand=True, padx=10)
-
-        self.btn_next3 = ctk.CTkButton(self.pages["settings"], text="Ready to Generate! Go to Console →", height=45, corner_radius=10, font=btn_font, command=lambda: self.show_page("console"))
-        self.btn_next3.grid(row=3, column=0, sticky="e", pady=(20, 0))
-
-        # Build Page 4: Console
-        console_header = ctk.CTkLabel(self.pages["console"], text="Step 4: System Generation Console", font=ctk.CTkFont(size=20, weight="bold"))
-        console_header.grid(row=0, column=0, sticky="w", padx=5, pady=(0, 5))
-
-        # Header Divider
-        ctk.CTkFrame(self.pages["console"], height=2, fg_color=("gray85", "gray25"), corner_radius=0).grid(row=1, column=0, sticky="ew", pady=(0, 20))
-
-        self.log_text = ctk.CTkTextbox(self.pages["console"], corner_radius=15, font=ctk.CTkFont(family="Consolas", size=13), border_width=1, border_color=("#E0E0E0", "#333333"))
-        self.log_text.grid(row=2, column=0, sticky="nsew", pady=(0, 15))
-        
-        # Idle state content
-        self.log_text.configure(state="normal")
-        self.log_text.insert("end", "SYSTEM STATUS: IDLE\n")
-        self.log_text.insert("end", "-"*40 + "\n")
-        self.log_text.insert("end", "1. Ensure Titles are provided in Step 1.\n")
-        self.log_text.insert("end", "2. Ensure Markdown Content is ready in Step 2.\n")
-        self.log_text.insert("end", "3. Click 'START BATCH GENERATION' below to begin.\n")
-        self.log_text.configure(state="disabled")
-
-        self.console_run_btn = ctk.CTkButton(self.pages["console"], text="▶ START BATCH GENERATION", height=50, corner_radius=12, font=ctk.CTkFont(size=15, weight="bold"), command=self.start_generation)
-        self.console_run_btn.grid(row=3, column=0, sticky="ew", pady=(20, 0))
-
-        self.pages["console"].grid_rowconfigure(2, weight=1)
-
-        # No progress bar anymore, so we remove the logic from run_generation later
-        self.progress_bar = None 
-
-        # Initialize view
-        self.show_page("titles")
-
-    def update_activation_state(self, activated):
-        self.is_activated = activated
-        btn_state = "normal" if activated else "disabled"
-        
-        if activated:
-            self.activation_card.grid_remove()
-            self.status_badge.configure(text="● SYSTEM READY", text_color="#2ECC71")
-        else:
-            self.activation_card.grid()
-            self.status_badge.configure(text="● ACTIVATION REQUIRED", text_color="#E74C3C")
-
-        # Update all action buttons
-        for btn in [self.console_run_btn, self.btn_next1, self.btn_next2, self.btn_next3]:
-            if hasattr(self, btn.winfo_name()):
-                btn.configure(state=btn_state)
-
-        # Update inputs
-        self.content_text.configure(state=btn_state)
-        self.titles_text.configure(state=btn_state)
-        self.prefix_entry.configure(state=btn_state)
-        self.start_num_entry.configure(state=btn_state)
-        self.output_folder_entry.configure(state=btn_state)
-        self.browse_btn.configure(state=btn_state)
-        if activated:
-            self.activation_key_entry.delete(0, "end")
-
-    def _update_ghosts(self):
-        if hasattr(self, 'titles_text') and hasattr(self, 'titles_ghost'):
-            if self.titles_text.get("1.0", "end-1c").strip():
-                self.titles_ghost.grid_remove()
-            else:
-                self.titles_ghost.grid()
-        
-        if hasattr(self, 'content_text') and hasattr(self, 'content_ghost'):
-            if self.content_text.get("1.0", "end-1c").strip():
-                self.content_ghost.grid_remove()
-            else:
-                self.content_ghost.grid()
-
-
-    def update_gutter(self, text_widget, gutter_widget):
-        content = text_widget.get("1.0", "end-1c")
-        if content.strip() == CONTENT_PLACEHOLDER or not content.strip():
-            current_lines = 0
-        else:
-            try:
-                current_lines = int(text_widget.index("end-1c").split(".")[0])
-            except Exception:
-                current_lines = content.count("\n") + 1
-        total_lines = current_lines + 5 if current_lines > 0 else 5
-        line_text = "\n".join(str(i) for i in range(1, total_lines + 1)) + "\n"
-        gutter_widget.configure(state="normal")
-        gutter_widget.delete("1.0", "end")
-        gutter_widget.insert("1.0", line_text)
-        gutter_widget.configure(state="disabled")
-        try:
-            gutter_widget.yview_moveto(text_widget.yview()[0])
-        except Exception:
-            pass
-
-    def refresh_line_gutters(self, event=None):
-        if hasattr(self, 'content_gutter') and hasattr(self, 'titles_gutter'):
-            self.update_gutter(self.content_text, self.content_gutter)
-            self.update_gutter(self.titles_text, self.titles_gutter)
-
-    def sync_gutter_scroll(self, text_widget, gutter_widget, event=None):
-        try:
-            gutter_widget.yview_moveto(text_widget.yview()[0])
-        except Exception:
-            pass
-
-    def on_font_change(self, value):
-        self.save_settings()
-        self.refresh_font_menu()
-
-    def refresh_font_menu(self):
-        if not hasattr(self, 'font_menu'): return
-        recent = self.pdf_font.get()
-        all_fonts = sorted(list(self.font_map.keys()))
-        if recent in all_fonts:
-            all_fonts.remove(recent)
-        
-        # New order: Auto, Recent (if not Auto), then everything else
-        new_values = ["Auto"]
-        if recent != "Auto":
-            new_values.append(recent)
-        new_values.extend(all_fonts)
-        
-        # Update dropdown values and re-bind with new order
-        self.font_menu.configure(values=new_values)
-        self.font_menu._open_dropdown_menu = lambda *args: ScrollableDropdown(self.font_menu, new_values, self.on_font_change, self.pdf_font)
-
-    def clear_placeholder(self, widget, placeholder):
-        # Only clear if it's precisely the placeholder text
-        content = widget.get("1.0", "end-1c")
-        if content == placeholder:
-            widget.delete("1.0", "end")
-            mode_idx = 1 if ctk.get_appearance_mode() == "Dark" else 0
-            text_color = ctk.ThemeManager.theme.get("CTkTextbox", {}).get("text_color", ["#000000", "#FFFFFF"])[mode_idx]
-            widget.configure(text_color=text_color)
-            self.refresh_line_gutters()
-
-    def browse_dir(self):
-        dirname = filedialog.askdirectory()
-        if dirname:
-            self.output_folder.set(dirname)
-            self.save_settings()
-
-    def show_page(self, page_name):
-        # Hide all pages
-        for page in self.pages.values():
-            page.grid_forget()
-        
-        # Show selected
-        self.pages[page_name].grid(row=1, column=0, sticky="nsew")
-        
-        # Update sidebar button styling
-        for btn, name in [(self.btn_titles, "titles"), (self.btn_content, "content"), (self.btn_settings, "settings"), (self.btn_console, "console")]:
-            if name == page_name:
-                btn.configure(fg_color=("#E5E5E5", "#333333"), text_color=("#3B8ED0", "#FFFFFF"))
-            else:
-                btn.configure(fg_color="transparent", text_color=("gray20", "gray90"))
-
-    def toggle_theme(self):
-        new_mode = "Dark" if self.theme_switch.get() else "Light"
-        self.change_appearance_mode(new_mode)
-
-    def change_appearance_mode(self, mode):
-        ctk.set_appearance_mode(mode)
-        self.save_settings()
-        
-        # Update static colors for tk.Text gutters
-        mode_idx = 1 if ctk.get_appearance_mode() == "Dark" else 0
-        bg_color_dynamic = ctk.ThemeManager.theme.get("CTkTextbox", {}).get("fg_color", ["#F9F9FA", "#1D1E1E"])
-        bg_color_static = bg_color_dynamic[mode_idx] if isinstance(bg_color_dynamic, list) else bg_color_dynamic
-        
-        if hasattr(self, 'content_gutter'):
-            self.content_gutter.configure(bg=bg_color_static)
-        if hasattr(self, 'titles_gutter'):
-            self.titles_gutter.configure(bg=bg_color_static)
-
-    def log(self, message):
-        self.log_text.configure(state="normal")
-        self.log_text.insert("end", f"> {message}\n")
-        self.log_text.see("end")
-        self.log_text.configure(state="disabled")
-
-    def restore_work(self):
-        content = self.settings.get("content")
-        if content:
-            self.content_text.insert("1.0", content)
-            
-        titles = self.settings.get("titles")
-        if titles:
-            self.titles_text.insert("1.0", titles)
-
-        self.refresh_line_gutters()
-        self.refresh_font_menu()
-        self._update_ghosts()
-
-    def start_generation(self):
-        self.save_settings()
-        self.console_run_btn.configure(state="disabled", text="RUNNING...")
-        self.status_badge.configure(text="● GENERATING", text_color="#F1C40F")
-        self.show_page("console")
-        self.log_text.configure(state="normal")
-        self.log_text.delete("1.0", "end")
-        self.log_text.configure(state="disabled")
-        threading.Thread(target=self.run_generation, daemon=True).start()
-
-    def run_generation(self):
-        import datetime
-        try:
-            raw_content = self.content_text.get("1.0", "end-1c")
-            if raw_content == CONTENT_PLACEHOLDER:
-                raw_content = ""
-            raw_titles = self.titles_text.get("1.0", "end-1c")
-            if raw_titles == TITLES_PLACEHOLDER:
-                raw_titles = ""
-            output_dir = Path(self.output_folder.get())
-            prefix = self.prefix.get()
-            try:
-                start_n = int(self.start_num.get())
-            except:
-                start_n = 1
-            if not raw_content.strip():
-                self.after(0, lambda: messagebox.showerror("Error", "Content is empty!"))
-                return
-            titles = [l.strip() for l in raw_titles.splitlines() if l.strip()]
-            if not titles:
-                self.after(0, lambda: messagebox.showerror("Error", "No titles provided!"))
-                return
-            output_dir.mkdir(parents=True, exist_ok=True)
-            total = len(titles)
-            started_at = datetime.datetime.now()
-
-            self.after(0, lambda: self.log(f"{'─'*55}"))
-            self.after(0, lambda: self.log(f"  BATCH JOB STARTED  ·  {started_at.strftime('%Y-%m-%d  %H:%M:%S')}"))
-            self.after(0, lambda: self.log(f"  Documents queued   :  {total}"))
-            self.after(0, lambda: self.log(f"  Output folder      :  {output_dir}"))
-            self.after(0, lambda: self.log(f"{'─'*55}"))
-
-            for i, title in enumerate(titles):
-                file_num = start_n + i
-                filename = f"{prefix}{file_num:02d}.pdf"
-                filepath = output_dir / filename
-                self.build_pdf(filepath, title, raw_content)
-                progress = (i + 1) / total
-                pct = int(progress * 100)
-                bar = "█" * int(progress * 20) + "░" * (20 - int(progress * 20))
-                msg = f"  [{bar}] {pct:>3}%   ✓  {filename}"
-                self.after(0, lambda p=progress, m=msg: [
-                    self.progress_bar.set(p) if self.progress_bar else None,
-                    self.log(m)
-                ])
-
-            elapsed = (datetime.datetime.now() - started_at).total_seconds()
-            self.after(0, lambda: self.log(f"{'─'*55}"))
-            self.after(0, lambda: self.log(f"  STATUS   :  ALL {total} DOCUMENTS GENERATED"))
-            self.after(0, lambda: self.log(f"  TIME     :  {elapsed:.2f}s  ·  {elapsed/total:.2f}s avg per file"))
-            self.after(0, lambda: self.log(f"  SAVED TO :  {output_dir}"))
-            self.after(0, lambda: self.log(f"{'─'*55}"))
-            self.after(0, lambda: [
-                self.status_badge.configure(text="● SYSTEM READY", text_color="#2ECC71"),
-                messagebox.showinfo("Batch Complete", f"✓  {total} PDFs generated successfully!\n\nSaved to:\n{output_dir}")
-            ])
-        except Exception as err:
-            m = str(err)
-            self.after(0, lambda m=m: [
-                self.status_badge.configure(text="● ENGINE ERROR", text_color="#E74C3C"),
-                self.log(f"{'─'*55}"),
-                self.log(f"  CRITICAL ERROR"),
-                self.log(f"  {m}"),
-                self.log(f"{'─'*55}"),
-                messagebox.showerror("Generation Failed", m)
-            ])
-        finally:
-            self.after(0, lambda: self.console_run_btn.configure(state="normal", text="▶ START BATCH GENERATION"))
+        threading.Thread(target=worker, daemon=True).start()
+        return {"success": True}
 
     def build_pdf(self, filepath, title, raw_markdown):
-        from fpdf.fonts import FontFace
-        selected_font = self.pdf_font.get() if hasattr(self, 'pdf_font') else "Auto"
-        font_map = getattr(self, 'font_map', {})
-
-        def generate(use_fallback=False):
-            pdf = FPDF()
-            pdf.set_auto_page_break(auto=True, margin=20)
-            pdf.add_page()
-            
-            u_reg = get_resource_path(os.path.join("fonts", "NotoSans-Regular.ttf"))
-            unicode_ready = os.path.exists(u_reg)
-            if unicode_ready:
-                pdf.add_font("autocontentunicode", "", u_reg)
-                pdf.add_font("autocontentunicode", "B", get_resource_path(os.path.join("fonts", "NotoSans-Bold.ttf")) if os.path.exists(get_resource_path(os.path.join("fonts", "NotoSans-Bold.ttf"))) else u_reg)
-                pdf.add_font("autocontentunicode", "I", get_resource_path(os.path.join("fonts", "NotoSans-Italic.ttf")) if os.path.exists(get_resource_path(os.path.join("fonts", "NotoSans-Italic.ttf"))) else u_reg)
-                pdf.set_fallback_fonts(["autocontentunicode"])
-
-            font_family = "helvetica"
-            def add_font_with_bold(family, reg_path):
-                pdf.add_font(family, "", str(reg_path))
-                p = Path(reg_path)
-                bold = next((c for c in [p.parent/(p.stem+"bd"+p.suffix), p.parent/(p.stem+"b"+p.suffix), p.parent/(p.stem+"-Bold"+p.suffix), p.parent/(p.stem+"Bold"+p.suffix)] if c.exists()), None)
-                pdf.add_font(family, "B", str(bold) if bold else str(reg_path))
-                italic = next((c for c in [p.parent/(p.stem+"i"+p.suffix), p.parent/(p.stem+"-Italic"+p.suffix), p.parent/(p.stem+"Italic"+p.suffix)] if c.exists()), None)
-                pdf.add_font(family, "I", str(italic) if italic else str(reg_path))
-                bi = next((c for c in [p.parent/(p.stem+"bi"+p.suffix), p.parent/(p.stem+"-BoldItalic"+p.suffix)] if c.exists()), None)
-                pdf.add_font(family, "BI", str(bi) if bi else str(reg_path))
-
-            if use_fallback:
-                fpath = get_unicode_font_path(font_map)
-                if fpath:
-                    font_family = "AutoContentUnicode"
-                    add_font_with_bold(font_family, fpath)
-            elif selected_font and selected_font != "Auto":
-                fpath = get_unicode_font_path(font_map, selected_font)
-                if fpath:
-                    font_family = selected_font
-                    add_font_with_bold(font_family, fpath)
-
-            pdf.set_font(font_family, style="B", size=20)
-            pdf.multi_cell(0, 12, title)
-            pdf.set_draw_color(59, 142, 208)
-            pdf.line(10, pdf.get_y()+2, 200, pdf.get_y()+2)
-            pdf.ln(10)
-
-            html_content = markdown(re.sub(r"^#\s+.*", "", raw_markdown, count=1, flags=re.MULTILINE), extensions=['extra', 'sane_lists'])
-            tag_styles = {
-                "h1": FontFace(emphasis="B", size_pt=20),
-                "h2": FontFace(emphasis="B", size_pt=16),
-                "h3": FontFace(emphasis="B", size_pt=14),
-                "p":  FontFace(size_pt=12),
-                "li": FontFace(size_pt=12),
-            }
-            try:
-                pdf.write_html(html_content, tag_styles=tag_styles)
-            except Exception:
-                pdf.set_font("helvetica", size=12)
-                pdf.multi_cell(0, 8, html_content)
-            return pdf
-
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=20)
+        pdf.add_page()
+        pdf.set_font("helvetica", style="B", size=20)
+        pdf.multi_cell(0, 12, title)
+        pdf.set_draw_color(59, 142, 208)
+        pdf.line(10, pdf.get_y()+2, 200, pdf.get_y()+2)
+        pdf.ln(10)
+        html_content = markdown(re.sub(r"^#\s+.*", "", raw_markdown, count=1, flags=re.MULTILINE), extensions=['extra', 'sane_lists'])
+        pdf.set_font("helvetica", size=12)
         try:
-            res = generate(use_fallback=False)
-            res.output(str(filepath))
+            from fpdf.fonts import FontFace
+            tag_styles = {"h1": FontFace(emphasis="B", size_pt=20), "h2": FontFace(emphasis="B", size_pt=16), "p": FontFace(size_pt=12)}
+            pdf.write_html(html_content, tag_styles=tag_styles)
         except:
-            res = generate(use_fallback=True)
-            res.output(str(filepath))
+            pdf.multi_cell(0, 8, html_content)
+        pdf.output(str(filepath))
 
-    def on_closing(self):
+def start_app():
+    initial_settings = DEFAULT_SETTINGS
+    if SETTINGS_FILE.exists():
         try:
-            self.save_settings()
-        except:
-            pass
-        self.quit()
-        self.destroy()
-        sys.exit(0)
+            with open(SETTINGS_FILE, "r") as f:
+                initial_settings.update(json.load(f))
+        except: pass
+    html_file = get_resource_path('index.html')
+    window = webview.create_window('AutoContent Pro | Ultimate Engine', html_file, width=1100, height=750, min_size=(900, 600), background_color='#09090b')
+    api = Api(window)
+    window.expose(api.verify_key, api.select_folder, api.run_batch, api.deactivate)
+    def on_loaded():
+        js_data = {"titles": initial_settings.get('titles', ''), "content": initial_settings.get('content', ''), "prefix": initial_settings.get('prefix', 'doc'), "start_num": initial_settings.get('start_num', '1'), "folder": initial_settings.get('output_folder', '')}
+        js_code = f"""
+            document.getElementById('titles-input').value = {json.dumps(js_data['titles'])};
+            document.getElementById('content-input').value = {json.dumps(js_data['content'])};
+            document.getElementById('prefix').value = {json.dumps(js_data['prefix'])};
+            document.getElementById('start-num').value = {json.dumps(js_data['start_num'])};
+            document.getElementById('output-folder').value = {json.dumps(js_data['folder'])};
+            updateGutter('titles'); updateGutter('content');
+            updateLog('System initialized. Ready for batch generation.');
+        """
+        window.evaluate_js(js_code)
+        api.check_initial_license()
+    window.events.loaded += on_loaded
+    webview.start()
 
-if __name__ == "__main__":
-    app = AutoContentPro()
-    app.protocol("WM_DELETE_WINDOW", app.on_closing)
-    app.mainloop()
+if __name__ == '__main__':
+    start_app()
