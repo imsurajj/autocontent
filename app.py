@@ -38,7 +38,9 @@ APP_VERSION = "1.0.0"
 VERSION_URL = "https://raw.githubusercontent.com/imsurajj/autocontent/main/version.json"
 
 # Security Config (Pro Hashing)
-KEY_HASH = "938b81665a363a992be769b7f520775ca4640103194a0852e61c37b03657743d"
+# The app validates the user-facing activation key by hashing it.
+# The actual plain key is not stored in readable form here.
+KEY_HASH = "d98d6111195555816560a714cbdd9bda62ff006f7fd4757ba188b3852cbedb27"
 LICENSE_DURATION_DAYS = 30
 
 # Placeholders
@@ -74,8 +76,13 @@ class AutoContentPro(ctk.CTk):
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
+        self.is_activated = False
 
         self.check_license()
+
+    def normalize_key(self, key):
+        normalized = re.sub(r"[\s\-]+", "", key).upper()
+        return normalized
 
     def check_license(self):
         is_valid = False
@@ -84,21 +91,21 @@ class AutoContentPro(ctk.CTk):
                 with open(LICENSE_FILE, "r") as f:
                     data = json.load(f)
                     activation_date_str = data.get("date", "")
+                    license_hash = data.get("key", "")
                     if "T" in activation_date_str:
                         activation_date = datetime.fromisoformat(activation_date_str)
                     else:
                         activation_date = datetime.strptime(activation_date_str, "%Y-%m-%d")
                     
-                    if datetime.now() < activation_date + timedelta(days=LICENSE_DURATION_DAYS):
+                    if (license_hash == KEY_HASH or license_hash == "VALIDATED") and datetime.now() < activation_date + timedelta(days=LICENSE_DURATION_DAYS):
                         is_valid = True
-            except:
+            except Exception:
                 pass
         
-        if is_valid:
-            self.show_main_app()
+        self.is_activated = is_valid
+        self.show_main_app()
+        if self.is_activated:
             threading.Thread(target=self.check_for_updates, daemon=True).start()
-        else:
-            self.show_activation_screen()
 
     def check_for_updates(self):
         try:
@@ -135,7 +142,7 @@ class AutoContentPro(ctk.CTk):
                     font=ctk.CTkFont(size=14), text_color="gray70").pack(pady=(5, 30))
         
         self.key_entry = ctk.CTkEntry(container, placeholder_text="Enter Key...", 
-                                     show="*", width=380, height=50, 
+                                     show="•", width=380, height=50, 
                                      font=ctk.CTkFont(family="Consolas", size=16),
                                      border_width=1, corner_radius=12)
         self.key_entry.pack(pady=10)
@@ -146,18 +153,23 @@ class AutoContentPro(ctk.CTk):
                                          height=55, width=300, font=ctk.CTkFont(size=16, weight="bold"),
                                          corner_radius=15)
         self.activate_btn.pack(pady=(25, 0))
+        ctk.CTkLabel(container, text="Enter the activation key, not the hidden hash.", 
+                     font=ctk.CTkFont(size=12), text_color="gray60").pack(pady=(10, 0))
 
     def verify_license(self):
-        user_key = "".join(self.key_entry.get().split())
+        user_key = self.normalize_key(self.activation_key_entry.get())
         user_hash = hashlib.sha256(user_key.encode()).hexdigest()
         
         if user_hash == KEY_HASH:
             with open(LICENSE_FILE, "w") as f:
                 json.dump({"date": datetime.now().isoformat(), "key": "VALIDATED"}, f)
-            self.show_main_app()
+            self.update_activation_state(True)
             threading.Thread(target=self.check_for_updates, daemon=True).start()
         else:
-            messagebox.showerror("Error", "Invalid License Key! Please try again.")
+            messagebox.showerror(
+                "Error",
+                "Invalid License Key! Please enter the activation key exactly as provided, not the internal hash."
+            )
 
     def show_main_app(self):
         for child in self.winfo_children():
@@ -170,6 +182,7 @@ class AutoContentPro(ctk.CTk):
         self.start_num = tk.StringVar(value=self.settings.get("start_num"))
         self.setup_ui()
         self.restore_work()
+        self.update_activation_state(self.is_activated)
 
     def load_settings(self):
         if SETTINGS_FILE.exists():
@@ -221,7 +234,20 @@ class AutoContentPro(ctk.CTk):
         self.main_container = ctk.CTkFrame(self, fg_color="transparent")
         self.main_container.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
         self.main_container.grid_columnconfigure(0, weight=1)
+        self.main_container.grid_rowconfigure(0, weight=0)
         self.main_container.grid_rowconfigure(1, weight=1)
+
+        self.activation_card = ctk.CTkFrame(self.main_container, corner_radius=15)
+        self.activation_card.grid(row=0, column=0, sticky="ew", pady=(0, 10), padx=0)
+        self.activation_card.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(self.activation_card, text="Activation required to enable app features.", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=20, pady=(20, 5), sticky="w")
+        self.activation_key_entry = ctk.CTkEntry(self.activation_card, placeholder_text="Enter Activation Key...", show="•", width=380, height=40, font=ctk.CTkFont(family="Consolas", size=14), border_width=1, corner_radius=12)
+        self.activation_key_entry.grid(row=1, column=0, padx=20, pady=(0, 10), sticky="ew")
+        self.activation_key_entry.bind("<Return>", lambda e: self.verify_license())
+        self.activation_submit_btn = ctk.CTkButton(self.activation_card, text="ACTIVATE", command=self.verify_license, fg_color="#3B8ED0", hover_color="#2B6DA0", height=45, width=180, font=ctk.CTkFont(size=14, weight="bold"), corner_radius=12)
+        self.activation_submit_btn.grid(row=2, column=0, padx=20, pady=(0, 15), sticky="w")
+        ctk.CTkLabel(self.activation_card, text="Your install activation key enables generation and settings.", font=ctk.CTkFont(size=12), text_color="gray60").grid(row=3, column=0, padx=20, pady=(0, 20), sticky="w")
+
         self.tabview = ctk.CTkTabview(self.main_container, corner_radius=15)
         self.tabview.grid(row=1, column=0, sticky="nsew")
         self.tab_editor = self.tabview.add("📝 CONTENT EDITOR")
@@ -243,12 +269,16 @@ class AutoContentPro(ctk.CTk):
         settings_card.pack(fill="x", padx=20, pady=20)
         row1 = ctk.CTkFrame(settings_card, fg_color="transparent")
         row1.pack(fill="x", padx=20, pady=15)
-        ctk.CTkEntry(row1, textvariable=self.prefix, width=150).pack(side="left", padx=(10, 30))
-        ctk.CTkEntry(row1, textvariable=self.start_num, width=100).pack(side="left")
+        self.prefix_entry = ctk.CTkEntry(row1, textvariable=self.prefix, width=150)
+        self.prefix_entry.pack(side="left", padx=(10, 30))
+        self.start_num_entry = ctk.CTkEntry(row1, textvariable=self.start_num, width=100)
+        self.start_num_entry.pack(side="left")
         row2 = ctk.CTkFrame(settings_card, fg_color="transparent")
         row2.pack(fill="x", padx=20, pady=(0, 20))
-        ctk.CTkEntry(row2, textvariable=self.output_folder).pack(side="left", fill="x", expand=True, padx=(10, 10))
-        ctk.CTkButton(row2, text="Browse", width=80, command=self.browse_dir).pack(side="right")
+        self.output_folder_entry = ctk.CTkEntry(row2, textvariable=self.output_folder)
+        self.output_folder_entry.pack(side="left", fill="x", expand=True, padx=(10, 10))
+        self.browse_btn = ctk.CTkButton(row2, text="Browse", width=80, command=self.browse_dir)
+        self.browse_btn.pack(side="right")
         self.tab_console.grid_columnconfigure(0, weight=1)
         self.tab_console.grid_rowconfigure(1, weight=1)
         self.progress_bar = ctk.CTkProgressBar(self.tab_console, height=12)
@@ -256,6 +286,30 @@ class AutoContentPro(ctk.CTk):
         self.log_text = ctk.CTkTextbox(self.tab_console, corner_radius=10, font=ctk.CTkFont(family="Consolas", size=13))
         self.log_text.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
         self.log_text.configure(state="disabled")
+
+    def update_activation_state(self, activated):
+        self.is_activated = activated
+        if activated:
+            self.activation_card.grid_remove()
+            self.generate_btn.configure(state="normal")
+            self.content_text.configure(state="normal")
+            self.titles_text.configure(state="normal")
+            self.prefix_entry.configure(state="normal")
+            self.start_num_entry.configure(state="normal")
+            self.output_folder_entry.configure(state="normal")
+            self.browse_btn.configure(state="normal")
+            self.activation_key_entry.delete(0, "end")
+            self.status_badge.configure(text="● SYSTEM READY", text_color="#2ECC71")
+        else:
+            self.activation_card.grid()
+            self.generate_btn.configure(state="disabled")
+            self.content_text.configure(state="disabled")
+            self.titles_text.configure(state="disabled")
+            self.prefix_entry.configure(state="disabled")
+            self.start_num_entry.configure(state="disabled")
+            self.output_folder_entry.configure(state="disabled")
+            self.browse_btn.configure(state="disabled")
+            self.status_badge.configure(text="● ACTIVATION REQUIRED", text_color="#E74C3C")
 
     def add_placeholder(self, widget, placeholder):
         val = widget.get("1.0", "end-1c").strip()
