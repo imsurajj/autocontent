@@ -42,21 +42,25 @@ This guide walks you through deploying your licensing server to PythonAnywhere s
 
 ## How to Manage Your Licenses
 
-Your server has a simple built-in way to generate new keys. 
+You can now easily manage all your licenses directly from your web browser using these 4 URLs. **Make sure to replace `TEAM-A-1234` with the actual key you are managing!**
 
-### Generating a New Key
-To create a new key (e.g., "TEAM-A-1234"), simply open your web browser and go to:
-`https://yourusername.pythonanywhere.com/admin/add_key/TEAM-A-1234`
+### 1. Add a New Key
+Generate a new key for a user:
+`https://imsuraj.pythonanywhere.com/admin/add_key/TEAM-A-1234`
+*(You will see a message saying "Key added successfully". You can now give this key to your team member.)*
 
-You should see a message saying "Key added successfully". You can now give this key to your team member.
+### 2. See All Keys & Statuses
+Check who is active, who is revoked, and see their Hardware IDs:
+`https://imsuraj.pythonanywhere.com/admin/list`
+*(This will show you a nice JSON list of every key in your system).*
 
-### Revoking a Key
-1. In PythonAnywhere, go to the **Files** tab and open your `mysite` folder.
-2. You will see a file named `licenses.db`. 
-3. To change a key's status, you can either download this file and open it locally using a tool like [DB Browser for SQLite](https://sqlitebrowser.org/), or run an SQLite console directly in PythonAnywhere to run a quick SQL command:
-   ```sql
-   UPDATE licenses SET status = 'Revoked' WHERE key = 'TEAM-A-1234';
-   ```
-4. Once marked as "Revoked", the user's desktop app will immediately block them from using the software.
+### 3. Revoke a Key (Block Access)
+Instantly block a user from using the software:
+`https://imsuraj.pythonanywhere.com/admin/revoke/TEAM-A-1234`
+*(Changes status to Revoked. The user's app will immediately kick them out on their next startup).*
 
-> **Security Note:** The `/admin/add_key/` endpoint is currently open for ease of setup. Once you are comfortable, you should add a simple password check to this route in `flask_app.py` so random people cannot generate their own keys!
+### 4. Re-Activate a Key
+If you accidentally revoked someone, you can restore their access:
+`https://imsuraj.pythonanywhere.com/admin/activate/TEAM-A-1234`
+
+> **Security Note:** These endpoints are currently open for your convenience. Since this URL is private to you, it's generally safe, but keep your PythonAnywhere URL secret!

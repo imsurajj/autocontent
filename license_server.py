@@ -75,6 +75,46 @@ def add_key(key):
     conn.close()
     return jsonify({"message": msg})
 
+@app.route('/admin/list', methods=['GET'])
+def list_keys():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT key, status, hwid FROM licenses")
+    rows = c.fetchall()
+    conn.close()
+    
+    # Format the data nicely
+    licenses = [{"key": row[0], "status": row[1], "hwid": row[2] or "Not Activated Yet"} for row in rows]
+    return jsonify({"licenses": licenses, "total": len(licenses)})
+
+@app.route('/admin/revoke/<key>', methods=['GET'])
+def revoke_key(key):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("UPDATE licenses SET status = 'Revoked' WHERE key = ?", (key.upper(),))
+    conn.commit()
+    rows_affected = c.rowcount
+    conn.close()
+    
+    if rows_affected > 0:
+        return jsonify({"message": f"Key {key} has been revoked."})
+    else:
+        return jsonify({"message": "Key not found."}), 404
+
+@app.route('/admin/activate/<key>', methods=['GET'])
+def activate_key(key):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("UPDATE licenses SET status = 'Active' WHERE key = ?", (key.upper(),))
+    conn.commit()
+    rows_affected = c.rowcount
+    conn.close()
+    
+    if rows_affected > 0:
+        return jsonify({"message": f"Key {key} has been set to Active."})
+    else:
+        return jsonify({"message": "Key not found."}), 404
+
 # Initialize DB on startup (works both locally and under WSGI)
 init_db()
 
