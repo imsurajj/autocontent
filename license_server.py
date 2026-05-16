@@ -3,7 +3,7 @@ import sqlite3
 import os
 
 app = Flask(__name__)
-DB_FILE = 'licenses.db'
+DB_FILE = '/home/imsuraj/mysite/licenses.db'
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
@@ -75,6 +75,8 @@ def add_key(key):
     conn.close()
     return jsonify({"message": msg})
 
+# Initialize DB on startup (works both locally and under WSGI)
+init_db()
+
 if __name__ == '__main__':
-    init_db()
     app.run(debug=True)
