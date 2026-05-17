@@ -63,4 +63,62 @@ Instantly block a user from using the software:
 If you accidentally revoked someone, you can restore their access:
 `https://imsuraj.pythonanywhere.com/admin/activate/TEAM-A-1234`
 
+---
+
+## 🚀 How to Publish UI/Frontend Updates (Stealth Patches)
+
+The **Stealth Patch Engine** allows you to update your app's layout, styles, colors, and frontend features instantly without forcing users to download a new `.exe`.
+
+### Step 1: Upload your index.html to PythonAnywhere
+1. Make your UI changes in the local `index.html` file on your computer.
+2. Log in to **PythonAnywhere** and go to the **Files** tab.
+3. Open the `mysite` folder (where your `flask_app.py` is located).
+4. Upload your updated `index.html` to this directory.
+
+### Step 2: You're Done!
+*   Unlike server-side code changes, **you do not need to reload your server** when updating `index.html`!
+*   The Flask server dynamically calculates the SHA-256 checksum of `index.html` on every query.
+*   On next startup, all user apps will detect the new checksum, silently download the updated layout (~30KB), and load the new interface immediately!
+
 > **Security Note:** These endpoints are currently open for your convenience. Since this URL is private to you, it's generally safe, but keep your PythonAnywhere URL secret!
+
+---
+
+## 🛠️ Developer Release Checklist (For Future Reference)
+
+Use this checklist whenever you want to publish frontend UI edits or release major engine updates.
+
+### 📂 Step 1: Push Changes to GitHub
+Commit your local workspace and push it to your private repository:
+```bash
+git add .
+git commit -m "feat: added ota stealth patches and native self-updater engine"
+git push origin main
+```
+
+### 🌐 Step 2: Sync to PythonAnywhere
+
+#### Option A: Using Git (Fastest)
+1. Open the PythonAnywhere **Bash Console**.
+2. Run:
+   ```bash
+   cd ~/mysite
+   git pull
+   cp license_server.py flask_app.py
+   ```
+3. Go to the **Web** tab in PythonAnywhere and click **Reload**.
+
+#### Option B: Manual Upload
+1. Go to the **Files** tab on PythonAnywhere and enter the `mysite/` folder.
+2. Upload the updated `license_server.py` (rename/overwrite your main web file, e.g., `flask_app.py`).
+3. Upload `index.html` to the exact same `mysite/` folder.
+4. Go to the **Web** tab in PythonAnywhere and click **Reload**.
+
+### 🔨 Step 3: Compile the New EXE File
+Generate a standalone compiled executable for your users:
+1. Open your terminal/command line locally in `d:\autocontent`.
+2. Run the compiler command:
+   ```bash
+   pyinstaller --noconfirm --onefile --windowed --add-data "index.html;." app.py
+   ```
+3. Your brand-new self-updating executable is now fully compiled and sitting inside the `dist/` folder ready for distribution!

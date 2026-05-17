@@ -5,6 +5,7 @@ import json
 import threading
 import urllib.request
 import webbrowser
+import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 from fpdf import FPDF
@@ -32,6 +33,68 @@ LICENSE_FILE = USER_DATA_DIR / "license.key"
 APP_VERSION = "2.0.0"
 LICENSE_API_URL = "https://imsuraj.pythonanywhere.com"
 
+def check_and_apply_patches():
+    """
+    Checks the license/patch server for a new index.html update.
+    If a new patch is available, it downloads and caches it in USER_DATA_DIR.
+    Returns the path to the HTML file to load (either cached patch or bundled fallback).
+    """
+    cached_html = USER_DATA_DIR / "index.html"
+    cached_hash_file = USER_DATA_DIR / "patch_hash.txt"
+    bundled_html = get_resource_path("index.html")
+    
+    # By default, use bundled file if no cached patch exists
+    html_to_load = str(bundled_html)
+    if cached_html.exists():
+        html_to_load = str(cached_html)
+        
+    try:
+        # Query the patch server for the latest hash
+        req = urllib.request.Request(
+            f"{LICENSE_API_URL}/api/v1/patch/hash", 
+            headers={"User-Agent": "AutoContentPro-Client"}
+        )
+        with urllib.request.urlopen(req, timeout=4) as response:
+            res_data = json.loads(response.read().decode('utf-8'))
+            remote_hash = res_data.get("hash")
+            
+        if not remote_hash:
+            return html_to_load
+            
+        # Get the local cached hash
+        local_hash = ""
+        if cached_hash_file.exists():
+            try:
+                local_hash = cached_hash_file.read_text(encoding="utf-8").strip()
+            except:
+                pass
+                
+        # If the hashes differ, or we don't have a cached HTML file, download the patch!
+        if remote_hash != local_hash or not cached_html.exists():
+            download_req = urllib.request.Request(
+                f"{LICENSE_API_URL}/api/v1/patch/download",
+                headers={"User-Agent": "AutoContentPro-Client"}
+            )
+            with urllib.request.urlopen(download_req, timeout=10) as download_response:
+                patch_content = download_response.read()
+                
+            # Perform a quick validation: check if it starts with <!DOCTYPE html
+            # to make sure we didn't download an error page or garbage
+            content_str = patch_content.decode('utf-8', errors='ignore').strip()
+            if "<!DOCTYPE html" in content_str or "<html" in content_str:
+                # Write to AppData
+                cached_html.write_bytes(patch_content)
+                cached_hash_file.write_text(remote_hash, encoding="utf-8")
+                html_to_load = str(cached_html)
+                print(f"[Stealth Patch] Successfully downloaded and applied new frontend patch (hash: {remote_hash})")
+            else:
+                print("[Stealth Patch] Invalid patch content received. Skipping patch.")
+    except Exception as e:
+        print(f"[Stealth Patch] Update check failed or offline: {str(e)}")
+        # Offline or server issue, we fall back to whatever we have (cached or bundled)
+        
+    return html_to_load
+
 DEFAULT_SETTINGS = {
     "output_folder": str(USER_DATA_DIR / "output_pdfs"),
     "prefix": "doc",
@@ -47,6 +110,75 @@ class Api:
         self.is_generating = False
         self.is_activated = False
         self.settings = self.load_settings()
+        self.update_url = None
+        self.remote_version = None
+
+    def check_major_updates(self):
+        """Checks the server for a major executable (engine) update."""
+        try:
+            req = urllib.request.Request(
+                f"{LICENSE_API_URL}/api/v1/update/check", 
+                headers={"User-Agent": "AutoContentPro-Client"}
+            )
+            with urllib.request.urlopen(req, timeout=4) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                remote_version = res_data.get("version")
+                download_url = res_data.get("url")
+                
+                # Compare versions using simple parser
+                if remote_version:
+                    # Quick semantic version parser (e.g. "2.1.0" -> [2, 1, 0])
+                    def parse_v(v_str):
+                        return [int(x) for x in re.sub(r"[^\d\.]", "", v_str).split(".")]
+                        
+                    if parse_v(remote_version) > parse_v(APP_VERSION):
+                        self.update_url = download_url
+                        self.remote_version = remote_version
+                        # Notify UI to show the dynamic update banner
+                        self.window.evaluate_js(f"showUpdateBanner('{remote_version}')")
+        except:
+            pass
+
+    def trigger_engine_update(self):
+        """Downloads the new executable and triggers the self-overwriting batch command."""
+        if not self.update_url:
+            return {"success": False, "error": "No update URL available"}
+            
+        def downloader():
+            try:
+                self.window.evaluate_js("setUpdateBtnState('downloading')")
+                temp_exe = USER_DATA_DIR / "temp_update.exe"
+                
+                # Download the new binary from Flask update distribution
+                req = urllib.request.Request(self.update_url, headers={"User-Agent": "AutoContentPro-Client"})
+                with urllib.request.urlopen(req, timeout=60) as response:
+                    data = response.read()
+                    
+                # Write to AppData
+                temp_exe.write_bytes(data)
+                
+                self.window.evaluate_js("setUpdateBtnState('applying')")
+                
+                # Paths resolved
+                exe_path = sys.executable
+                temp_exe_str = str(temp_exe)
+                
+                # Bulletproof Windows terminal command:
+                # 1. Wait 2 seconds (allows main app to exit and release file locks)
+                # 2. Silently overwrite running exe with downloaded temp exe
+                # 3. Launch the new exe
+                # 4. Clean up / delete the temp file
+                cmd = f'timeout /t 2 && copy /y "{temp_exe_str}" "{exe_path}" && start "" "{exe_path}" && del "{temp_exe_str}"'
+                
+                subprocess.Popen(cmd, shell=True)
+                
+                # Exit process immediately to unlock original exe file
+                os._exit(0)
+            except Exception as e:
+                self.window.evaluate_js(f"setUpdateBtnState('error', '{str(e)}')")
+                
+        threading.Thread(target=downloader, daemon=True).start()
+        return {"success": True}
 
     def load_settings(self):
         if SETTINGS_FILE.exists():
@@ -188,11 +320,23 @@ def start_app():
             with open(SETTINGS_FILE, "r") as f:
                 initial_settings.update(json.load(f))
         except: pass
-    html_file = get_resource_path('index.html')
+    html_file = check_and_apply_patches()
     window = webview.create_window('AutoContent Pro | Ultimate Engine', html_file, width=1100, height=750, min_size=(900, 600), background_color='#09090b')
     api = Api(window)
-    window.expose(api.verify_key, api.select_folder, api.run_batch, api.deactivate)
+    window.expose(api.verify_key, api.select_folder, api.run_batch, api.deactivate, api.trigger_engine_update)
     def on_loaded():
+        # Get the patch status to show in console and version tag
+        cached_hash_file = USER_DATA_DIR / "patch_hash.txt"
+        patch_info = "Engine: Active"
+        patch_tag = ""
+        if cached_hash_file.exists():
+            try:
+                local_hash = cached_hash_file.read_text(encoding="utf-8").strip()[:8]
+                patch_info = f"Engine: Active (Patch {local_hash})"
+                patch_tag = f" ({local_hash})"
+            except:
+                pass
+                
         js_data = {"titles": initial_settings.get('titles', ''), "content": initial_settings.get('content', ''), "prefix": initial_settings.get('prefix', 'doc'), "start_num": initial_settings.get('start_num', '1'), "folder": initial_settings.get('output_folder', '')}
         js_code = f"""
             document.getElementById('titles-input').value = {json.dumps(js_data['titles'])};
@@ -200,11 +344,15 @@ def start_app():
             document.getElementById('prefix').value = {json.dumps(js_data['prefix'])};
             document.getElementById('start-num').value = {json.dumps(js_data['start_num'])};
             document.getElementById('output-folder').value = {json.dumps(js_data['folder'])};
+            document.getElementById('version-tag').innerText = "Current Version: v{APP_VERSION}{patch_tag}";
             updateGutter('titles'); updateGutter('content');
-            updateLog('System initialized. Ready for batch generation.');
+            updateLog('System initialized. {patch_info} operational.', 'text-zinc-400');
         """
         window.evaluate_js(js_code)
         api.check_initial_license()
+        
+        # Asynchronously check for major executable patches in background
+        threading.Thread(target=api.check_major_updates, daemon=True).start()
     window.events.loaded += on_loaded
     webview.start()
 

@@ -279,6 +279,20 @@
                 <button id="sidebar-activate-btn" onclick="openModal('lock-modal')" class="w-full bg-white text-black px-3 h-[30px] text-[8px] font-black uppercase tracking-widest hover:bg-zinc-200 transition-all">Activate License</button>
             </div>
 
+            <!-- Tier 1.5: Major Update Available Banner -->
+            <div id="update-banner" class="hidden p-3.5 border-b border-theme bg-blue-500/5 border-blue-500/10">
+                <div class="flex flex-col space-y-2">
+                    <div class="flex items-center text-[8px] font-black text-blue-400 uppercase tracking-[0.2em]">
+                        <i data-lucide="sparkles" class="w-3.5 h-3.5 mr-1.5 animate-pulse text-blue-400"></i>
+                        Update Available
+                    </div>
+                    <span id="update-version-label" class="text-[7px] text-sub uppercase font-bold tracking-[0.15em]">Version v2.1.0 ready</span>
+                    <button id="update-btn" onclick="triggerUpdate()" class="w-full bg-blue-600 text-white px-3 h-[28px] text-[8px] font-black uppercase tracking-widest hover:bg-blue-500 transition-all shadow-md">
+                        Update Engine
+                    </button>
+                </div>
+            </div>
+
             <!-- Tier 2: Status & Toggle -->
             <div class="h-[42px] px-6 flex items-center justify-between border-b border-theme sidebar-footer-content">
                 <div class="flex items-center space-x-2">
@@ -633,6 +647,39 @@
             } else {
                 showToast("Batch Failed", true);
                 updateLog(`ERROR: ${result.error}`, "text-rose-400");
+            }
+        }
+
+        function showUpdateBanner(version) {
+            document.getElementById('update-banner').classList.remove('hidden');
+            document.getElementById('update-version-label').innerText = `Version v${version} ready`;
+            lucide.createIcons();
+        }
+
+        async function triggerUpdate() {
+            const res = await pywebview.api.trigger_engine_update();
+            if (res.success) {
+                updateLog("Starting native engine update... Please wait.", "text-blue-400");
+            }
+        }
+
+        function setUpdateBtnState(state, errDetail = "") {
+            const btn = document.getElementById('update-btn');
+            if (state === 'downloading') {
+                btn.disabled = true;
+                btn.className = "w-full bg-zinc-800 text-zinc-500 px-3 h-[28px] text-[8px] font-black uppercase tracking-widest cursor-not-allowed border border-theme";
+                btn.innerText = "DOWNLOADING...";
+                updateLog("Downloading update binary from server...", "text-zinc-500");
+            } else if (state === 'applying') {
+                btn.innerText = "APPLYING...";
+                btn.className = "w-full bg-emerald-600 text-white px-3 h-[28px] text-[8px] font-black uppercase tracking-widest cursor-not-allowed shadow-md animate-pulse";
+                updateLog("Applying update... Overwriting files and restarting application.", "text-emerald-400");
+            } else if (state === 'error') {
+                btn.disabled = false;
+                btn.className = "w-full bg-rose-600 text-white px-3 h-[28px] text-[8px] font-black uppercase tracking-widest hover:bg-rose-500 transition-all shadow-md";
+                btn.innerText = "RETRY UPDATE";
+                updateLog(`UPDATE CRITICAL ERROR: ${errDetail}`, "text-rose-400");
+                showToast("Update Failed", true);
             }
         }
 
