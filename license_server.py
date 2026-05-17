@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import hashlib
+import json
 from datetime import datetime
 from flask import Flask, request, jsonify, send_file, redirect
 from flask_cors import CORS
@@ -264,9 +265,21 @@ def download_patch():
 # NEW: ENGINE UPDATE ROUTE - CHECK LATEST BINARY VERSION & LINK
 @app.route('/api/v1/update/check', methods=['GET'])
 def check_update():
-    # You can update this version to trigger major native updates for users
+    version_path = os.path.join(os.path.dirname(__file__), 'version.json')
+    if os.path.exists(version_path):
+        try:
+            with open(version_path, 'r', encoding='utf-8') as f:
+                ver_data = json.load(f)
+                return jsonify({
+                    "version": ver_data.get("version", "2.0.0"),
+                    "url": ver_data.get("url", "https://imsuraj.pythonanywhere.com/api/v1/dist/autocontent_pro.exe")
+                }), 200
+        except:
+            pass
+            
+    # Fallback to standard
     return jsonify({
-        "version": "2.1.0",
+        "version": "2.0.0",
         "url": "https://imsuraj.pythonanywhere.com/api/v1/dist/autocontent_pro.exe"
     }), 200
 
