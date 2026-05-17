@@ -28,11 +28,28 @@ autocontent/
 
 ---
 
-## How to Use
+### Step 2 — Create the Database & Licenses Table
 
-1. **Write Content:** Open `content.md` and write your main text.
-2. **List Titles:** Open `titles.md` and add one title per line for each PDF you want to create.
-3. **Run App:** Launch the application, select your settings, and hit "Generate".
+#### Via the Appwrite Console (UI)
+
+*Note: Appwrite recently updated their terminology. "Collections" are now called "Tables", and "Attributes" are now "Columns".*
+
+| Step | Action |
+|------|--------|
+| 1 | **Database → + New Database** → Name: `autocontent`, ID: `autocontent` |
+| 2 | Inside the DB → **+ Create Table** → Name: `licenses`, ID: `licenses` |
+| 3 | Add columns (see table below) |
+| 4 | Copy the **Database ID** and **Table ID** (Collection ID) |
+
+**Required Columns for the `licenses` table:**
+
+| Column Key     | Type     | Required | Notes                         |
+|----------------|----------|----------|-------------------------------|
+| `userId`       | String   | ✅       | Appwrite user ID or email     |
+| `licenseKey`   | String   | ✅       | The unique license key        |
+| `hardwareId`   | String   | ❌       | Locked machine fingerprint    |
+| `expiresAt`    | DateTime | ❌       | Expiry date (null = lifetime) |
+| `isActive`     | Boolean  | ✅       | Whether the license is valid  |
 
 ---
 
@@ -60,3 +77,12 @@ autocontent/
    ```bash
    pyinstaller --noconsole --onefile app.py
    ```
+
+---
+
+## 📚 Documentation
+
+For advanced setup and distribution, see the following guides included in this repository:
+
+- [☁️ Appwrite Cloud Setup Guide](appwrite.md) — How to provision the backend, secure license verification, and set up database tables.
+- [📦 Testing & Distribution Guide](distribution.md) — How to test locally, compile with PyInstaller, and build a Windows installer using Inno Setup.

@@ -6,11 +6,25 @@ import threading
 import urllib.request
 import webbrowser
 import subprocess
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 from fpdf import FPDF
 from markdown import markdown
 import webview
+from dotenv import load_dotenv
+
+# Load local environment variables if available
+load_dotenv()
+
+# ==========================================
+# APPWRITE CONFIGURATION
+# ==========================================
+APPWRITE_ENDPOINT = os.getenv("APPWRITE_ENDPOINT", "https://sgp.cloud.appwrite.io/v1")
+APPWRITE_PROJECT_ID = os.getenv("APPWRITE_PROJECT_ID", "6a09e8a5002e960936ec")
+APPWRITE_FUNCTION_ID = os.getenv("APPWRITE_FUNCTION_ID", "verify-license")
+
+APP_VERSION = "2.1.0"
 
 # Initialize environment for PyInstaller
 def get_resource_path(relative_path):
@@ -30,13 +44,11 @@ USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 SETTINGS_FILE = USER_DATA_DIR / "settings.json"
 LICENSE_FILE = USER_DATA_DIR / "license.key"
-APP_VERSION = "2.1.0"
-LICENSE_API_URL = "https://imsuraj.pythonanywhere.com"
 
 def check_and_apply_patches():
     """
-    Checks the license/patch server for a new index.html update.
-    If a new patch is available, it downloads and caches it in USER_DATA_DIR.
+    Queries Appwrite Storage to check for a frontend stealth patch (index.html).
+    If the remote MD5 signature differs from the local cache, it downloads it silently.
     Returns the path to the HTML file to load (either cached patch or bundled fallback).
     """
     cached_html = USER_DATA_DIR / "index.html"
@@ -63,55 +75,48 @@ def check_and_apply_patches():
             version_tracking_file.write_text(APP_VERSION, encoding="utf-8")
         except: pass
         
-    # By default, use bundled file if no cached patch exists
     html_to_load = str(bundled_html)
     if cached_html.exists():
         html_to_load = str(cached_html)
         
     try:
-        # Query the patch server for the latest hash
+        # Query Appwrite Storage bucket metadata (using the "patches" bucket and "frontend_patch" file ID)
+        url = f"{APPWRITE_ENDPOINT}/storage/buckets/patches/files/frontend_patch"
         req = urllib.request.Request(
-            f"{LICENSE_API_URL}/api/v1/patch/hash", 
-            headers={"User-Agent": "AutoContentPro-Client"}
+            url, 
+            headers={"User-Agent": "AutoContentPro-Client", "X-Appwrite-Project": APPWRITE_PROJECT_ID}
         )
         with urllib.request.urlopen(req, timeout=4) as response:
             res_data = json.loads(response.read().decode('utf-8'))
-            remote_hash = res_data.get("hash")
+            remote_hash = res_data.get("signature") # Appwrite returns MD5 in signature
             
         if not remote_hash:
             return html_to_load
             
-        # Get the local cached hash
         local_hash = ""
         if cached_hash_file.exists():
-            try:
-                local_hash = cached_hash_file.read_text(encoding="utf-8").strip()
-            except:
-                pass
+            try: local_hash = cached_hash_file.read_text(encoding="utf-8").strip()
+            except: pass
                 
-        # If the hashes differ, or we don't have a cached HTML file, download the patch!
         if remote_hash != local_hash or not cached_html.exists():
-            download_req = urllib.request.Request(
-                f"{LICENSE_API_URL}/api/v1/patch/download",
-                headers={"User-Agent": "AutoContentPro-Client"}
+            d_url = f"{APPWRITE_ENDPOINT}/storage/buckets/patches/files/frontend_patch/download"
+            d_req = urllib.request.Request(
+                d_url,
+                headers={"User-Agent": "AutoContentPro-Client", "X-Appwrite-Project": APPWRITE_PROJECT_ID}
             )
-            with urllib.request.urlopen(download_req, timeout=10) as download_response:
-                patch_content = download_response.read()
+            with urllib.request.urlopen(d_req, timeout=10) as d_response:
+                patch_content = d_response.read()
                 
-            # Perform a quick validation: check if it starts with <!DOCTYPE html
-            # to make sure we didn't download an error page or garbage
             content_str = patch_content.decode('utf-8', errors='ignore').strip()
             if "<!DOCTYPE html" in content_str or "<html" in content_str:
-                # Write to AppData
                 cached_html.write_bytes(patch_content)
                 cached_hash_file.write_text(remote_hash, encoding="utf-8")
                 html_to_load = str(cached_html)
-                print(f"[Stealth Patch] Successfully downloaded and applied new frontend patch (hash: {remote_hash})")
+                print(f"[Stealth Patch] Downloaded and applied new Appwrite frontend patch (hash: {remote_hash})")
             else:
-                print("[Stealth Patch] Invalid patch content received. Skipping patch.")
+                print("[Stealth Patch] Invalid patch content received.")
     except Exception as e:
-        print(f"[Stealth Patch] Update check failed or offline: {str(e)}")
-        # Offline or server issue, we fall back to whatever we have (cached or bundled)
+        print(f"[Stealth Patch] Appwrite storage check failed or offline: {str(e)}")
         
     return html_to_load
 
@@ -130,8 +135,6 @@ class Api:
         self.is_generating = False
         self.is_activated = False
         self.settings = self.load_settings()
-        self.update_url = None
-        self.remote_version = None
 
     def load_settings(self):
         if SETTINGS_FILE.exists():
@@ -148,31 +151,47 @@ class Api:
 
     def select_folder(self):
         result = self.window.create_file_dialog(webview.FOLDER_DIALOG)
-        if result:
-            return result[0]
+        if result: return result[0]
         return None
 
+    def call_appwrite_function(self, action, key, hwid):
+        """Helper to invoke the Appwrite Serverless Function synchronously"""
+        payload = json.dumps({"action": action, "key": key, "hwid": hwid})
+        # Appwrite requires "async": False to return the execution response immediately
+        req_body = json.dumps({"async": False, "body": payload}).encode('utf-8')
+        
+        url = f"{APPWRITE_ENDPOINT}/functions/{APPWRITE_FUNCTION_ID}/executions"
+        req = urllib.request.Request(
+            url, 
+            data=req_body, 
+            headers={
+                "Content-Type": "application/json", 
+                "X-Appwrite-Project": APPWRITE_PROJECT_ID,
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AutoContent/1.0"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=12) as r:
+            res = json.loads(r.read().decode('utf-8'))
+            if res.get("status") == "failed":
+                return {"status": "error", "message": "Serverless execution failed"}, 500
+            
+            status_code = res.get("responseStatusCode", 500)
+            body_str = res.get("responseBody", "{}")
+            try:
+                return json.loads(body_str), status_code
+            except:
+                return {"status": "error", "message": "Invalid Appwrite response format"}, 500
+
     def deactivate(self):
-        """Removes license and notifies backend to release the key."""
         if LICENSE_FILE.exists():
             try:
-                # 1. Read the key to notify backend
                 with open(LICENSE_FILE, "r") as f:
-                    data = json.load(f)
-                    old_key = data.get("key")
-                
-                # 2. Notify backend
+                    old_key = json.load(f).get("key")
                 if old_key:
+                    hwid = str(uuid.getnode())
                     try:
-                        import uuid
-                        hwid = str(uuid.getnode())
-                        req_data = json.dumps({"key": old_key, "hwid": hwid}).encode('utf-8')
-                        req = urllib.request.Request(LICENSE_API_URL + "/deactivate", data=req_data, headers={'Content-Type': 'application/json'})
-                        with urllib.request.urlopen(req, timeout=5) as r:
-                            pass # Key released on backend
+                        self.call_appwrite_function("deactivate", old_key, hwid)
                     except: pass 
-
-                # 3. Wipe local license
                 LICENSE_FILE.unlink()
                 self.is_activated = False
                 self.window.evaluate_js("setActivation(false)")
@@ -185,66 +204,127 @@ class Api:
         if not user_key: return False
         
         try:
-            import uuid
             hwid = str(uuid.getnode())
-            req_data = json.dumps({"key": user_key, "hwid": hwid}).encode('utf-8')
-            req = urllib.request.Request(LICENSE_API_URL + "/verify", data=req_data, headers={'Content-Type': 'application/json'})
-            with urllib.request.urlopen(req, timeout=10) as response:
-                result = json.loads(response.read().decode('utf-8'))
-                if result.get("status") == "success":
-                    user_name = result.get("user", "Active User")
-                    with open(LICENSE_FILE, "w") as f:
-                        json.dump({"date": datetime.now().isoformat(), "key": user_key, "user": user_name}, f)
-                    self.is_activated = True
-                    # Update license settings info in UI safely using json.dumps to avoid quote breaks!
-                    self.window.evaluate_js("setActivation(true)")
-                    self.window.evaluate_js(f"setLicenseInfo({json.dumps(user_key)}, {json.dumps(user_name)}, {json.dumps(hwid)}, true)")
-                    return True
-        except: pass
+            print(f"\n[DEBUG] Calling Appwrite function...")
+            print(f"[DEBUG] Endpoint  : {APPWRITE_ENDPOINT}")
+            print(f"[DEBUG] Project ID: {APPWRITE_PROJECT_ID}")
+            print(f"[DEBUG] Function  : {APPWRITE_FUNCTION_ID}")
+            print(f"[DEBUG] Key sent  : {user_key}")
+            print(f"[DEBUG] HWID      : {hwid}")
+            res, status_code = self.call_appwrite_function("verify", user_key, hwid)
+            print(f"[DEBUG] Status code: {status_code}")
+            print(f"[DEBUG] Response   : {res}")
+            
+            if status_code == 200 and res.get("status") == "success":
+                user_name = res.get("user", "Active User")
+                org_name = res.get("organization", "")
+                with open(LICENSE_FILE, "w") as f:
+                    json.dump({
+                        "date": datetime.now().isoformat(), 
+                        "key": user_key, 
+                        "user": user_name,
+                        "org": org_name,
+                        "last_online_sync": datetime.now().isoformat()
+                    }, f)
+                self.is_activated = True
+                self.window.evaluate_js("setActivation(true)")
+                self.window.evaluate_js(f"setLicenseInfo({json.dumps(user_key)}, {json.dumps(user_name)}, {json.dumps(org_name)}, {json.dumps(hwid)}, true)")
+                self.window.evaluate_js("updateLog('Activation successful! Security gate released.', 'text-emerald-400')")
+                return True
+            else:
+                msg = res.get("message", "Activation failed")
+                print(f"[DEBUG] Activation failed - message: {msg}")
+                self.window.evaluate_js(f"updateLog('Activation Error: {msg}', 'text-rose-400')")
+        except Exception as e:
+            print(f"[DEBUG] EXCEPTION: {str(e)}")
+            self.window.evaluate_js(f"updateLog('Activation Sync Error: Offline or server unreachable.', 'text-rose-400')")
         return False
 
     def check_initial_license(self):
-        import uuid
         hwid = str(uuid.getnode())
-        # 1. Fallback self-healing migration from Installer folder ({app}/license.key)
+        
+        # 1. Fallback self-healing migration from Installer
         installer_license = EXE_DIR / "license.key"
         if installer_license.exists():
             try:
                 with open(installer_license, "r") as f:
-                    inst_data = json.load(f)
-                    user_key = inst_data.get("key", "")
+                    user_key = json.load(f).get("key", "")
                 if user_key:
                     with open(LICENSE_FILE, "w") as f:
-                        json.dump({"date": datetime.now().isoformat(), "key": user_key}, f)
-                    try:
-                        installer_license.unlink()
-                    except:
-                        pass
-            except Exception as e:
-                print(f"[License Migration] Error migrating installer key: {str(e)}")
+                        json.dump({
+                            "date": datetime.now().isoformat(), 
+                            "key": user_key,
+                            "last_online_sync": "2000-01-01T00:00:00" # Force a network sync immediately
+                        }, f)
+                    try: installer_license.unlink()
+                    except: pass
+            except: pass
 
-        # 2. Standard Activation Check
+        # 2. Advanced Offline Sync Validation Model
         if LICENSE_FILE.exists():
             try:
                 with open(LICENSE_FILE, "r") as f:
                     data = json.load(f)
                     user_key = data.get("key", "")
                     user_name = data.get("user", "Active User")
-                success = self.verify_key(user_key)
-                if success:
-                    self.window.evaluate_js("setActivation(true)")
-                    self.window.evaluate_js("showPage('titles')") # Go to the first link of sidebar directly
-                    return True
-                else:
-                    # Clean up local cache since it is revoked or deleted on the server
+                    last_sync_str = data.get("last_online_sync")
+                
+                # Check if we can bypass network using the 24-hour cache
+                needs_sync = True
+                if last_sync_str:
                     try:
-                        LICENSE_FILE.unlink()
-                    except:
-                        pass
-            except:
-                pass
+                        last_sync = datetime.fromisoformat(last_sync_str)
+                        if (datetime.now() - last_sync).total_seconds() < (24 * 3600):
+                            needs_sync = False
+                    except: pass
+                
+                if not needs_sync:
+                    # Super-fast offline launch
+                    self.is_activated = True
+                    self.window.evaluate_js("setActivation(true)")
+                    self.window.evaluate_js(f"setLicenseInfo({json.dumps(user_key)}, {json.dumps(user_name)}, {json.dumps(data.get('org',''))}, {json.dumps(hwid)}, true)")
+                    self.window.evaluate_js("showPage('titles')") 
+                    return True
+                
+                # Perform Online Sync (cache expired)
+                try:
+                    res, status_code = self.call_appwrite_function("verify", user_key, hwid)
+                    if status_code == 200 and res.get("status") == "success":
+                        user_name = res.get("user", "Active User")
+                        org_name = res.get("organization", "")
+                        data["user"] = user_name
+                        data["org"] = org_name
+                        data["last_online_sync"] = datetime.now().isoformat()
+                        with open(LICENSE_FILE, "w") as f: json.dump(data, f)
+                        self.is_activated = True
+                        self.window.evaluate_js("setActivation(true)")
+                        self.window.evaluate_js(f"setLicenseInfo({json.dumps(user_key)}, {json.dumps(user_name)}, {json.dumps(org_name)}, {json.dumps(hwid)}, true)")
+                        self.window.evaluate_js("showPage('titles')")
+                        return True
+                    elif status_code in [403, 404]:
+                        # License definitively revoked or deleted from Appwrite
+                        msg = res.get("message", "Unknown error")
+                        self.window.evaluate_js(f"updateLog('License Revoked: {msg}', 'text-rose-400')")
+                        try: LICENSE_FILE.unlink()
+                        except: pass
+                except Exception as e:
+                    # Network offline or Appwrite unreachable - fallback to Grace Period
+                    if last_sync_str:
+                        try:
+                            last_sync = datetime.fromisoformat(last_sync_str)
+                            if (datetime.now() - last_sync).total_seconds() < (7 * 24 * 3600): # 7 Days Grace
+                                self.is_activated = True
+                                self.window.evaluate_js("setActivation(true)")
+                                self.window.evaluate_js(f"setLicenseInfo({json.dumps(user_key)}, {json.dumps(user_name)}, {json.dumps(data.get('org',''))}, {json.dumps(hwid)}, true)")
+                                self.window.evaluate_js("showPage('titles')")
+                                self.window.evaluate_js("updateLog('Network offline. Operating in Grace Period Mode (7 Days max).', 'text-amber-400')")
+                                return True
+                        except: pass
+                    self.window.evaluate_js("updateLog('Network offline. Grace period expired. Please connect to internet to verify license.', 'text-rose-400')")
+            except: pass
+            
         self.is_activated = False
-        self.window.evaluate_js(f"setLicenseInfo('', '', {json.dumps(hwid)}, false)")
+        self.window.evaluate_js(f"setLicenseInfo('', '', '', {json.dumps(hwid)}, false)")
         self.window.evaluate_js("setActivation(false)")
         return False
 
@@ -311,16 +391,18 @@ def start_app():
             with open(SETTINGS_FILE, "r") as f:
                 initial_settings.update(json.load(f))
         except: pass
+        
     if getattr(sys, 'frozen', False):
         html_file = check_and_apply_patches()
     else:
-        # In local development mode, always load the workspace index.html directly!
+        # Development mode bypasses patches and loads directly
         html_file = get_resource_path("index.html")
+        
     window = webview.create_window('AutoContent Pro | Ultimate Engine', html_file, width=1100, height=750, min_size=(900, 600), background_color='#09090b')
     api = Api(window)
     window.expose(api.verify_key, api.select_folder, api.run_batch, api.deactivate)
+    
     def on_loaded():
-        # Get the patch status to show in console and version tag
         cached_hash_file = USER_DATA_DIR / "patch_hash.txt"
         patch_info = "Engine: Active"
         patch_tag = ""
@@ -329,10 +411,16 @@ def start_app():
                 local_hash = cached_hash_file.read_text(encoding="utf-8").strip()[:8]
                 patch_info = f"Engine: Active (Patch {local_hash})"
                 patch_tag = f" ({local_hash})"
-            except:
-                pass
+            except: pass
                 
-        js_data = {"titles": initial_settings.get('titles', ''), "content": initial_settings.get('content', ''), "prefix": initial_settings.get('prefix', 'doc'), "start_num": initial_settings.get('start_num', '1'), "folder": initial_settings.get('output_folder', '')}
+        js_data = {
+            "titles": initial_settings.get('titles', ''), 
+            "content": initial_settings.get('content', ''), 
+            "prefix": initial_settings.get('prefix', 'doc'), 
+            "start_num": initial_settings.get('start_num', '1'), 
+            "folder": initial_settings.get('output_folder', '')
+        }
+        
         js_code = f"""
             document.getElementById('titles-input').value = {json.dumps(js_data['titles'])};
             document.getElementById('content-input').value = {json.dumps(js_data['content'])};
@@ -350,6 +438,7 @@ def start_app():
         """
         window.evaluate_js(js_code)
         api.check_initial_license()
+        
     window.events.loaded += on_loaded
     webview.start()
 

@@ -37,6 +37,27 @@ settings.json
 output_pdfs/
 titles.md
 
+# Environment
+.env
+.env.*
+
+# Appwrite function builds and temp
+appwrite_functions/**/build/
+appwrite_functions/**/__pycache__/
+appwrite_functions/**/dist/
+
+# Logs
+*.log
+
+# Secrets
+secrets.json
+credentials.json
+*.pem
+*.key
+
+# User data (local app cache)
+AppData/AutoContent Pro/
+%APPDATA%/AutoContent Pro/
 # OS
 .DS_Store
 Thumbs.db
