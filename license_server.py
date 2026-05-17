@@ -297,43 +297,6 @@ def download_exe():
     # 2. Robust Fallback: Redirect directly to the latest GitHub release package
     return redirect("https://github.com/imsurajj/autocontent/releases/latest/download/app.exe")
 
-# NEW: AUTOMATED GITHUB WEBHOOK (CI/CD AUTO-SYNC & LIVE HOT-RELOAD)
-@app.route('/webhook/sync', methods=['POST'])
-def github_webhook():
-    data = request.get_json(silent=True) or {}
-    
-    # Secure: Only auto-update if the push event is on the main/production branch
-    ref = data.get("ref", "")
-    if "refs/heads/main" not in ref:
-        return jsonify({"status": "skipped", "message": "Ignored push event on non-main branch"}), 200
-        
-    try:
-        import subprocess
-        import shutil
-        
-        repo_dir = os.path.dirname(__file__)
-        
-        # 1. Pull the latest commits from the private repository
-        result = subprocess.run(["git", "-C", repo_dir, "pull"], capture_output=True, text=True, check=True)
-        
-        # 2. Automatically copy updated server logic over to running WSGI target
-        src = os.path.join(repo_dir, "license_server.py")
-        dest = os.path.join(repo_dir, "flask_app.py")
-        if os.path.exists(src):
-            shutil.copy2(src, dest)
-            
-        # 3. Touch the WSGI config file to trigger a silent, hot-reload of PythonAnywhere!
-        wsgi_file = "/var/www/imsuraj_pythonanywhere_com_wsgi.py"
-        if os.path.exists(wsgi_file):
-            os.utime(wsgi_file, None)
-            
-        return jsonify({
-            "status": "success", 
-            "message": "Git pull succeeded, server copied, and hot-reload triggered successfully!",
-            "git_output": result.stdout
-        }), 200
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
