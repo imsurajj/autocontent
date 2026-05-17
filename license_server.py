@@ -206,8 +206,10 @@ def verify_license_post():
         conn.close()
         return jsonify({"status": "error", "message": "License key already active on another machine"}), 403
         
-    # 4. Update Last Login details in 12-hour format with AM/PM (e.g. 2026-05-17 11:07 AM)
-    login_time = datetime.now().strftime("%Y-%m-%d %I:%M %p")
+    # 4. Update Last Login details in India Standard Time (IST = UTC + 5:30) in 12-hour format with AM/PM
+    from datetime import timezone, timedelta
+    ist_now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+    login_time = ist_now.strftime("%Y-%m-%d %I:%M %p")
     c.execute("UPDATE licenses SET last_login=? WHERE UPPER(REPLACE(REPLACE(key, '-', ''), ' ', ''))=?", (login_time, user_key))
     conn.commit()
     

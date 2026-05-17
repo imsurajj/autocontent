@@ -311,7 +311,7 @@
         <div id="page-titles" class="flex flex-col h-full">
             <div class="h-[52px] px-10 flex items-center justify-between bg-card-theme border-b border-theme">
                 <h2 class="text-[9px] font-bold text-sub uppercase tracking-widest">Batch Document Titles</h2>
-                <span class="text-[9px] font-black text-accent uppercase tracking-widest" id="titles-count">0 Titles Loaded</span>
+                <span class="text-[9px] font-black text-accent uppercase tracking-widest" id="titles-count">Total Titles: 0</span>
             </div>
             <div class="flex-1 flex overflow-hidden">
                 <div class="gutter" id="titles-gutter">1</div>
@@ -520,7 +520,7 @@
             gutter.innerHTML = gutterHtml;
             
             if (type === 'titles') {
-                document.getElementById('titles-count').innerText = `${input.value.trim() ? lines : 0} Titles Loaded`;
+                document.getElementById('titles-count').innerText = `Total Titles: ${input.value.trim() ? lines : 0}`;
             }
         }
 
