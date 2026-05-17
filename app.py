@@ -325,6 +325,9 @@ def start_app():
                 setSystemInfo('{APP_VERSION}', '{patch_tag}');
             }}
             updateGutter('titles'); updateGutter('content');
+            if(typeof syncHistories === 'function') {{
+                syncHistories();
+            }}
             updateLog('System initialized. {patch_info} operational.', 'text-zinc-400');
         """
         window.evaluate_js(js_code)

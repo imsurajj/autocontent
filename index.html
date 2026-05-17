@@ -101,10 +101,12 @@
             text-align: right;
             padding-right: 12px;
             padding-top: 20px;
+            padding-bottom: 20px;
             color: var(--sub-text);
             font-family: 'JetBrains Mono', 'Fira Code', monospace;
-            font-size: 11px;
+            font-size: 13px;
             line-height: 24px;
+            overflow: hidden;
         }
 
         .main-textarea {
@@ -691,6 +693,110 @@
         const toastMsg = document.getElementById('toast-msg');
 
         const UI_VERSION = "2.1.1";
+
+        class TextareaHistory {
+            constructor(textareaId, gutterId) {
+                this.textarea = document.getElementById(textareaId);
+                this.gutterId = gutterId;
+                this.undoStack = [];
+                this.redoStack = [];
+                this.maxStackSize = 100;
+                this.isUndoingOrRedoing = false;
+                this.saveTimeout = null;
+                
+                this.saveState(true);
+                
+                this.textarea.addEventListener('input', (e) => {
+                    if (this.isUndoingOrRedoing) return;
+                    this.redoStack = [];
+                    const lastChar = this.textarea.value.slice(-1);
+                    if (/\s|[\.,!?;:]/.test(lastChar)) {
+                        this.saveState(true);
+                    } else {
+                        clearTimeout(this.saveTimeout);
+                        this.saveTimeout = setTimeout(() => {
+                            this.saveState(true);
+                        }, 500);
+                    }
+                });
+                
+                this.textarea.addEventListener('keydown', (e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                        e.preventDefault();
+                        clearTimeout(this.saveTimeout);
+                        this.saveState(false);
+                        this.undo();
+                    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+                        e.preventDefault();
+                        this.redo();
+                    }
+                });
+            }
+            
+            saveState(checkDuplicate = true) {
+                const state = {
+                    value: this.textarea.value,
+                    selectionStart: this.textarea.selectionStart,
+                    selectionEnd: this.textarea.selectionEnd
+                };
+                
+                const lastState = this.undoStack[this.undoStack.length - 1];
+                if (!checkDuplicate || !lastState || lastState.value !== state.value) {
+                    if (lastState && lastState.value === state.value) return;
+                    this.undoStack.push(state);
+                    if (this.undoStack.length > this.maxStackSize) {
+                        this.undoStack.shift();
+                    }
+                }
+            }
+            
+            undo() {
+                if (this.undoStack.length <= 1) return;
+                
+                this.isUndoingOrRedoing = true;
+                const currentState = this.undoStack.pop();
+                this.redoStack.push(currentState);
+                
+                const previousState = this.undoStack[this.undoStack.length - 1];
+                this.restoreState(previousState);
+                this.isUndoingOrRedoing = false;
+            }
+            
+            redo() {
+                if (this.redoStack.length === 0) return;
+                
+                this.isUndoingOrRedoing = true;
+                const nextState = this.redoStack.pop();
+                this.undoStack.push(nextState);
+                
+                this.restoreState(nextState);
+                this.isUndoingOrRedoing = false;
+            }
+            
+            restoreState(state) {
+                this.textarea.value = state.value;
+                this.textarea.selectionStart = state.selectionStart;
+                this.textarea.selectionEnd = state.selectionEnd;
+                
+                const type = this.textarea.id.split('-')[0];
+                if (typeof updateGutter === 'function') {
+                    updateGutter(type);
+                }
+            }
+        }
+        
+        function syncHistories() {
+            if (window.titlesHistory) {
+                window.titlesHistory.undoStack = [];
+                window.titlesHistory.redoStack = [];
+                window.titlesHistory.saveState(false);
+            }
+            if (window.contentHistory) {
+                window.contentHistory.undoStack = [];
+                window.contentHistory.redoStack = [];
+                window.contentHistory.saveState(false);
+            }
+        }
         
         function checkNewBadges() {
             const now = new Date().getTime();
@@ -805,6 +911,7 @@
                 gutterHtml += i + '<br>';
             }
             gutter.innerHTML = gutterHtml;
+            gutter.scrollTop = input.scrollTop;
 
             if (type === 'titles') {
                 document.getElementById('titles-count').innerText = `Total Titles: ${input.value.trim() ? lines : 0}`;
@@ -850,6 +957,7 @@
                 gutterHtml += i + "<br>";
             }
             gutter.innerHTML = gutterHtml;
+            gutter.scrollTop = terminal.scrollTop;
         }
 
         async function verifyKeyBanner() {
@@ -1007,8 +1115,29 @@
             lucide.createIcons();
         }
 
+        function setupScrollSync() {
+            const sync = (inputId, gutterId) => {
+                const el = document.getElementById(inputId);
+                const gt = document.getElementById(gutterId);
+                if (el && gt) {
+                    el.addEventListener('scroll', () => {
+                        gt.scrollTop = el.scrollTop;
+                    });
+                }
+            };
+            sync('titles-input', 'titles-gutter');
+            sync('content-input', 'content-gutter');
+            sync('terminal', 'console-gutter');
+        }
+
         applyTheme();
         checkNewBadges();
+        setupScrollSync();
+        
+        // Instantiate Histories globally
+        window.titlesHistory = new TextareaHistory('titles-input', 'titles-gutter');
+        window.contentHistory = new TextareaHistory('content-input', 'content-gutter');
+
         // Initial Gutter setup
         updateGutter('titles');
         updateGutter('content');
