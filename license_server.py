@@ -274,7 +274,8 @@ def check_update():
                 ver_data = json.load(f)
                 return jsonify({
                     "version": ver_data.get("version", "2.0.0"),
-                    "url": ver_data.get("url", "https://imsuraj.pythonanywhere.com/api/v1/dist/autocontent_pro.exe")
+                    "url": ver_data.get("url", "https://imsuraj.pythonanywhere.com/api/v1/dist/autocontent_pro.exe"),
+                    "active_badges": ver_data.get("active_badges", [])
                 }), 200
         except:
             pass
@@ -282,7 +283,8 @@ def check_update():
     # Fallback to standard
     return jsonify({
         "version": "2.0.0",
-        "url": "https://imsuraj.pythonanywhere.com/api/v1/dist/autocontent_pro.exe"
+        "url": "https://imsuraj.pythonanywhere.com/api/v1/dist/autocontent_pro.exe",
+        "active_badges": []
     }), 200
 
 # NEW: ENGINE UPDATE ROUTE - SERVE THE NATIVE COMPILED EXE
