@@ -30,7 +30,7 @@ USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 SETTINGS_FILE = USER_DATA_DIR / "settings.json"
 LICENSE_FILE = USER_DATA_DIR / "license.key"
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.1.0"
 LICENSE_API_URL = "https://imsuraj.pythonanywhere.com"
 
 def check_and_apply_patches():
@@ -360,7 +360,11 @@ def start_app():
             with open(SETTINGS_FILE, "r") as f:
                 initial_settings.update(json.load(f))
         except: pass
-    html_file = check_and_apply_patches()
+    if getattr(sys, 'frozen', False):
+        html_file = check_and_apply_patches()
+    else:
+        # In local development mode, always load the workspace index.html directly!
+        html_file = get_resource_path("index.html")
     window = webview.create_window('AutoContent Pro | Ultimate Engine', html_file, width=1100, height=750, min_size=(900, 600), background_color='#09090b')
     api = Api(window)
     window.expose(api.verify_key, api.select_folder, api.run_batch, api.deactivate, api.trigger_engine_update)
