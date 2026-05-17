@@ -498,20 +498,11 @@
     <main class="flex-1 flex flex-col min-w-0">
         <!-- SYSTEM LICENSE ALERT BANNER -->
         <div id="license-banner"
-            class="hidden shrink-0 border-b border-rose-500/20 bg-rose-950/20 px-10 py-3 flex items-center justify-between">
-            <div class="flex items-center space-x-3">
+            class="hidden shrink-0 border-b border-rose-500/20 bg-rose-950/20 px-10 py-3 flex items-center">
+            <div class="flex items-center space-x-3 w-full">
                 <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-rose-500 shrink-0"></i>
                 <span class="text-[9px] font-black tracking-[0.2em] text-white uppercase">License expired or
                     unactivated. Please activate to enable generation.</span>
-            </div>
-            <div class="flex items-center space-x-2">
-                <input type="password" id="license-banner-input" placeholder="ENTER ACTIVATION KEY"
-                    onkeydown="if(event.key === 'Enter') verifyKeyBanner()"
-                    class="bg-[var(--input-bg)] border border-theme px-3 py-1 text-main text-[9px] placeholder-sub focus:border-accent font-mono outline-none w-[180px] h-[26px] rounded-none uppercase">
-                <button id="banner-verify-btn" onclick="verifyKeyBanner()"
-                    class="bg-rose-600 hover:bg-rose-500 text-white px-4 h-[26px] text-[8px] font-black uppercase tracking-widest transition-all">
-                    Activate
-                </button>
             </div>
         </div>
         <!-- 01. TITLES VIEW -->
@@ -762,85 +753,81 @@
             </div>
 
             <div class="flex-1 flex flex-col bg-black/10 relative overflow-y-auto">
-                <!-- ACTIVATED STATE (GRID) -->
-                <div id="license-activated-state" class="hidden flex flex-col">
-                    <!-- ROW: LICENSE KEY (with mask toggle) -->
-                    <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center group bg-zinc-950/20">
-                        <div
-                            class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
-                            Active License Key</div>
+                <div class="flex flex-col">
+                    <!-- ROW: LICENSE KEY (with mask/edit toggle) -->
+                    <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center bg-zinc-950/20">
+                        <div class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest font-bold">
+                            License Key
+                        </div>
                         <div class="col-span-9 h-full flex items-center px-10 justify-between">
                             <div class="flex items-center space-x-3 w-full">
-                                <input type="password" id="license-key-display" readonly
+                                <input type="password" id="license-key-display"
                                     class="bg-transparent border-none outline-none text-xs text-main font-mono flex-1 select-all"
-                                    value="">
-                                <button onclick="toggleKeyVisibility()" class="text-sub hover:text-main transition-colors p-1 flex items-center" title="Toggle Visibility">
-                                    <i id="eye-icon" data-lucide="eye-off" class="w-3.5 h-3.5"></i>
+                                    placeholder="ENTER LICENSE KEY TO ACTIVATE"
+                                    onkeydown="if(event.key === 'Enter') handleLicenseAction()">
+                                
+                                <!-- UN-ACTIVATED STATE: ACTIVATE SYSTEM BUTTON -->
+                                <button id="license-activate-btn" onclick="handleLicenseAction()"
+                                    class="bg-emerald-600 hover:bg-emerald-500 text-white px-5 h-[28px] text-[8px] font-black uppercase tracking-widest transition-all rounded-sm shrink-0">
+                                    Activate System
                                 </button>
-                                <button onclick="copyLicenseKey()" class="text-sub hover:text-main transition-colors p-1 flex items-center" title="Copy License Key">
-                                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
-                                </button>
+                                
+                                <!-- ACTIVATED STATE: THREE ICONS (EYE, COPY, DEACTIVATE) -->
+                                <div id="license-active-actions" class="flex items-center space-x-2 hidden">
+                                    <button id="key-visibility-btn" onclick="toggleKeyVisibility()" class="text-sub hover:text-main transition-colors p-1 flex items-center" title="Toggle Visibility">
+                                        <i id="eye-icon" data-lucide="eye-off" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                    <button id="key-copy-btn" onclick="copyLicenseKey()" class="text-sub hover:text-main transition-colors p-1 flex items-center" title="Copy License Key">
+                                        <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                    <button id="key-deactivate-btn" onclick="deactivateApp()" class="text-rose-500 hover:text-rose-400 transition-colors p-1 flex items-center" title="Deactivate License">
+                                        <i data-lucide="shield-off" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- ROW: USER/REGISTERED TO -->
-                    <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center group bg-zinc-950/20">
-                        <div
-                            class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
-                            Registered User</div>
+                    <!-- ROW: REGISTERED TO -->
+                    <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center bg-zinc-950/20">
+                        <div class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest font-bold">
+                            Registered User
+                        </div>
                         <div class="col-span-9 h-full flex items-center px-10">
                             <span id="license-user-display" class="text-xs text-main uppercase font-bold tracking-widest">N/A</span>
                         </div>
                     </div>
 
                     <!-- ROW: DEVICE IDENTIFIER -->
-                    <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center group bg-zinc-950/20">
-                        <div
-                            class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
-                            Hardware Lock ID</div>
+                    <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center bg-zinc-950/20">
+                        <div class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest font-bold">
+                            Hardware Lock ID
+                        </div>
                         <div class="col-span-9 h-full flex items-center px-10 justify-between">
                             <span id="license-hwid-display" class="text-xs text-sub font-mono select-all">N/A</span>
                         </div>
                     </div>
 
-                    <!-- ROW: LICENSE STATUS -->
-                    <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center group bg-zinc-950/20">
-                        <div
-                            class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
-                            License Status</div>
-                        <div class="col-span-9 h-full flex items-center px-10 justify-between">
-                            <span id="license-status-badge" class="border border-rose-500/30 text-rose-500 text-[8px] font-black px-2 py-0.5 rounded-sm tracking-widest uppercase bg-rose-500/5">Unactivated</span>
-                            <button id="license-action-btn" onclick="handleLicenseAction()"
-                                class="bg-rose-600 hover:bg-rose-500 text-white px-5 h-[28px] text-[8px] font-black uppercase tracking-widest transition-all rounded-sm">
-                                Deactivate
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- UNACTIVATED STATE (DEVELOPER CONTACT ROWS) -->
-                <div id="license-unactivated-state" class="flex flex-col">
-                    <!-- ROW: WORKSTATION STATUS -->
+                    <!-- ROW: STATUS & ACTION -->
                     <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center bg-zinc-950/20">
-                        <div class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
+                        <div class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest font-bold">
                             Workstation Status
                         </div>
-                        <div class="col-span-9 h-full flex items-center px-10">
-                            <span class="border border-rose-500/30 text-rose-500 text-[8px] font-black px-2 py-0.5 rounded-sm tracking-widest uppercase bg-rose-500/5">
+                        <div class="col-span-9 h-full flex items-center px-10 justify-between">
+                            <span id="license-status-badge" class="border border-rose-500/30 text-rose-500 text-[8px] font-black px-2 py-0.5 rounded-sm tracking-widest uppercase bg-rose-500/5">
                                 Activation Required
                             </span>
                         </div>
                     </div>
 
-                    <!-- ROW: CONTACT DEVELOPER -->
-                    <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center bg-zinc-950/20">
+                    <!-- ROW: SUPPORT HELP (Only visible/styled nicely at the bottom) -->
+                    <div id="support-row" class="grid grid-cols-12 border-b border-theme h-[48px] items-center bg-zinc-950/20">
                         <div class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
                             Contact Developer
                         </div>
                         <div class="col-span-9 h-full flex items-center px-10 justify-between">
                             <span class="text-xs text-main font-mono select-all">imsurajj@gmail.com</span>
-                            <span class="text-[9px] font-bold text-sub uppercase tracking-widest mr-4">Enter key in top banner to activate</span>
+                            <span class="text-[9px] font-bold text-sub uppercase tracking-widest mr-4">Support & Assistance</span>
                         </div>
                     </div>
                 </div>
@@ -1141,73 +1128,81 @@
             const userDisplay = document.getElementById('license-user-display');
             const hwidDisplay = document.getElementById('license-hwid-display');
             const statusBadge = document.getElementById('license-status-badge');
-            const actionBtn = document.getElementById('license-action-btn');
             
-            const activatedState = document.getElementById('license-activated-state');
-            const unactivatedState = document.getElementById('license-unactivated-state');
+            const activateBtn = document.getElementById('license-activate-btn');
+            const activeActions = document.getElementById('license-active-actions');
+            const supportRow = document.getElementById('support-row');
             
             if (active) {
-                if (activatedState) activatedState.classList.remove('hidden');
-                if (unactivatedState) unactivatedState.classList.add('hidden');
-                
                 keyDisplay.value = key;
                 keyDisplay.setAttribute('readonly', 'true');
-                keyDisplay.placeholder = "";
+                keyDisplay.type = 'password';
                 userDisplay.innerText = user || "Registered User";
                 hwidDisplay.innerText = hwid;
                 
                 statusBadge.innerText = "Activated";
                 statusBadge.className = "border border-emerald-500/30 text-emerald-500 text-[8px] font-black px-2 py-0.5 rounded-sm tracking-widest uppercase bg-emerald-500/5";
                 
-                actionBtn.innerText = "Deactivate";
-                actionBtn.className = "bg-rose-600 hover:bg-rose-500 text-white px-5 h-[28px] text-[8px] font-black uppercase tracking-widest transition-all rounded-sm";
-                actionBtn.disabled = false;
-            } else {
-                if (activatedState) activatedState.classList.add('hidden');
-                if (unactivatedState) unactivatedState.classList.remove('hidden');
+                if (activateBtn) activateBtn.classList.add('hidden');
+                if (activeActions) activeActions.classList.remove('hidden');
                 
+                if (supportRow) supportRow.classList.add('hidden');
+            } else {
                 keyDisplay.value = "";
                 keyDisplay.removeAttribute('readonly');
+                keyDisplay.type = 'text';
                 keyDisplay.placeholder = "ENTER LICENSE KEY TO ACTIVATE";
                 userDisplay.innerText = "N/A";
                 hwidDisplay.innerText = hwid;
                 
-                statusBadge.innerText = "Unactivated";
+                statusBadge.innerText = "Activation Required";
                 statusBadge.className = "border border-rose-500/30 text-rose-500 text-[8px] font-black px-2 py-0.5 rounded-sm tracking-widest uppercase bg-rose-500/5";
+                
+                if (activateBtn) {
+                    activateBtn.classList.remove('hidden');
+                    activateBtn.disabled = false;
+                    activateBtn.innerText = "Activate System";
+                }
+                if (activeActions) activeActions.classList.add('hidden');
+                
+                if (supportRow) supportRow.classList.remove('hidden');
             }
+            lucide.createIcons();
         }
 
         async function handleLicenseAction() {
-            const actionBtn = document.getElementById('license-action-btn');
+            const activateBtn = document.getElementById('license-activate-btn');
             const keyDisplay = document.getElementById('license-key-display');
             
-            if (actionBtn.innerText.toUpperCase().includes("DEACTIVATE")) {
-                deactivateApp();
-            } else {
-                const key = keyDisplay.value.trim();
-                if (!key) {
-                    showToast("Enter License Key", true);
-                    return;
-                }
-                
-                actionBtn.disabled = true;
-                actionBtn.innerText = "VERIFYING...";
-                
-                try {
-                    const success = await pywebview.api.verify_key(key);
-                    if (success) {
-                        showToast("System Activated Successfully");
-                        setActivation(true);
-                        updateLog("License verified. Security gate released.", "text-emerald-400");
-                    } else {
-                        showToast("Invalid or Expired Key", true);
-                        actionBtn.disabled = false;
-                        actionBtn.innerText = "Activate System";
+            const key = keyDisplay.value.trim();
+            if (!key) {
+                showToast("Enter License Key", true);
+                return;
+            }
+            
+            if (activateBtn) {
+                activateBtn.disabled = true;
+                activateBtn.innerText = "VERIFYING...";
+            }
+            
+            try {
+                const success = await pywebview.api.verify_key(key);
+                if (success) {
+                    showToast("System Activated Successfully");
+                    setActivation(true);
+                    updateLog("License verified. Security gate released.", "text-emerald-400");
+                } else {
+                    showToast("Invalid or Expired Key", true);
+                    if (activateBtn) {
+                        activateBtn.disabled = false;
+                        activateBtn.innerText = "Activate System";
                     }
-                } catch (err) {
-                    showToast("Verification Error", true);
-                    actionBtn.disabled = false;
-                    actionBtn.innerText = "Activate System";
+                }
+            } catch (err) {
+                showToast("Verification Error", true);
+                if (activateBtn) {
+                    activateBtn.disabled = false;
+                    activateBtn.innerText = "Activate System";
                 }
             }
         }
@@ -1270,33 +1265,7 @@
             gutter.scrollTop = terminal.scrollTop;
         }
 
-        async function verifyKeyBanner() {
-            const keyInput = document.getElementById('license-banner-input');
-            const key = keyInput.value;
-            const btn = document.getElementById('banner-verify-btn');
 
-            if (!key) return showToast("Enter License Key", true);
-
-            btn.disabled = true;
-            btn.innerText = "VERIFYING...";
-
-            try {
-                const success = await pywebview.api.verify_key(key);
-                if (success) {
-                    showToast("System Activated Successfully");
-                    setActivation(true);
-                    updateLog("License verified. Security gate released.", "text-emerald-400");
-                } else {
-                    showToast("Invalid or Expired Key", true);
-                    btn.disabled = false;
-                    btn.innerText = "ACTIVATE";
-                }
-            } catch (err) {
-                showToast("Verification Error", true);
-                btn.disabled = false;
-                btn.innerText = "ACTIVATE";
-            }
-        }
 
         async function browseFolder() {
             const path = await pywebview.api.select_folder();

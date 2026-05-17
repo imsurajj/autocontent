@@ -233,7 +233,15 @@ class Api:
                 if success:
                     self.window.evaluate_js("setActivation(true)")
                     return True
-            except: pass
+                else:
+                    # Clean up local cache since it is revoked or deleted on the server
+                    try:
+                        LICENSE_FILE.unlink()
+                    except:
+                        pass
+            except:
+                pass
+        self.is_activated = False
         self.window.evaluate_js(f"setLicenseInfo('', '', '{hwid}', false)")
         self.window.evaluate_js("setActivation(false)")
         return False

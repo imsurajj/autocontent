@@ -230,8 +230,8 @@
                     <div class="col-span-2 py-4 px-6 border-r border-theme h-full flex items-center">Customer Name</div>
                     <div class="col-span-2 py-4 px-6 border-r border-theme text-center h-full flex items-center justify-center">Days Left</div>
                     <div class="col-span-3 py-4 px-6 border-r border-theme text-center h-full flex items-center justify-center">Last Login</div>
-                    <div class="col-span-2 py-4 px-6 border-r border-theme text-center h-full flex items-center justify-center">Active Status</div>
-                    <div class="col-span-1 py-4 px-6 text-center h-full flex items-center justify-center">Del</div>
+                    <div class="col-span-2 py-4 px-6 border-r border-theme text-center h-full flex items-center justify-center">Status</div>
+                    <div class="col-span-1 py-4 px-6 text-center h-full flex items-center justify-center">Actions</div>
                 </div>
 
                 <div id="license-list" class="flex-1 overflow-y-auto">
@@ -278,7 +278,9 @@
     </main>
 
     <script>
-        const API_BASE = "https://imsuraj.pythonanywhere.com";
+        const API_BASE = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost' || window.location.protocol === 'file:' 
+            ? 'http://127.0.0.1:5000' 
+            : 'https://imsuraj.pythonanywhere.com';
         const tooltip = document.getElementById('tooltip');
         const refreshIcon = document.getElementById('refresh-icon');
         const toast = document.getElementById('toast');
@@ -403,31 +405,36 @@
                 const data = await response.json();
                 listContainer.innerHTML = '';
                 data.licenses.forEach(lic => {
-                    const isChecked = lic.status === 'Active' ? 'checked' : '';
-                    const action = lic.status === 'Active' ? 'revoke' : 'activate';
-                    
-                    let statusText = 'REVOKED';
-                    let statusColor = 'text-rose-500';
-                    if (lic.status === 'Active') {
-                        statusText = 'ACTIVE';
-                        statusColor = 'text-blue-500';
-                    } else if (lic.status === 'Deactivated') {
-                        statusText = 'DEACT';
-                        statusColor = 'text-amber-500';
-                    }
-
                     const created = new Date(lic.created_at);
                     const expiry = new Date(created.getTime() + (lic.duration_days * 24 * 60 * 60 * 1000));
                     const diffDays = Math.ceil((expiry - new Date()) / (1000 * 60 * 60 * 24));
                     const daysLeft = diffDays > 0 ? `${diffDays} days` : 'Expired';
                     const daysColor = diffDays <= 5 ? 'text-rose-500 font-bold' : 'text-sub';
 
-                    // Reset action button: only visible if status is not Active
-                    const resetBtnHtml = lic.status !== 'Active' ? `
-                        <button onclick="resetActivation('${lic.key}')" onmouseenter="showTooltip(event, 'Reset Activation / HWID')" onmouseleave="hideTooltip()" class="text-amber-500 hover:text-amber-400 transition-colors p-1 flex items-center" title="Reset HWID / Status">
-                            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                    let statusText = 'REVOKED';
+                    let statusColor = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+                    let actionIconHtml = `
+                        <button onclick="toggleStatus('${lic.key}', 'activate')" 
+                            onmouseenter="showTooltip(event, 'Activate & Reset HWID')" onmouseleave="hideTooltip()" 
+                            class="text-emerald-500 hover:text-emerald-400 p-1.5 transition-colors">
+                            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
                         </button>
-                    ` : `<div class="w-[22px]"></div>`;
+                    `;
+
+                    if (lic.status === 'Active') {
+                        statusText = 'ACTIVE';
+                        statusColor = 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+                        actionIconHtml = `
+                            <button onclick="toggleStatus('${lic.key}', 'revoke')" 
+                                onmouseenter="showTooltip(event, 'Revoke License')" onmouseleave="hideTooltip()" 
+                                class="text-rose-500 hover:text-rose-400 p-1.5 transition-colors">
+                                <i data-lucide="shield-off" class="w-3.5 h-3.5"></i>
+                            </button>
+                        `;
+                    } else if (lic.status === 'Deactivated') {
+                        statusText = 'DEACT';
+                        statusColor = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+                    }
 
                     listContainer.innerHTML += `
                         <div class="grid grid-cols-12 items-center hover:bg-[var(--row-hover)] transition-colors group border-b border-theme">
@@ -437,16 +444,14 @@
                             <div class="col-span-2 py-4 px-6 border-r border-theme text-[11px] text-sub truncate">${lic.user_name}</div>
                             <div class="col-span-2 py-4 px-6 border-r border-theme text-center text-[11px] ${daysColor}">${daysLeft}</div>
                             <div class="col-span-3 py-4 px-6 border-r border-theme text-center text-[11px] text-sub font-mono">${lic.last_login || 'Never'}</div>
-                            <div class="col-span-2 py-4 px-6 border-r border-theme flex items-center justify-center space-x-2">
-                                <label class="switch">
-                                    <input type="checkbox" ${isChecked} onchange="toggleStatus('${lic.key}', '${action}')">
-                                    <span class="slider"></span>
-                                </label>
-                                <span class="text-[8px] font-bold tracking-widest ${statusColor} w-12 text-center">${statusText}</span>
-                                ${resetBtnHtml}
+                            <div class="col-span-2 py-4 px-6 border-r border-theme flex items-center justify-center">
+                                <span class="px-2.5 py-0.5 text-[8px] font-black rounded-full border uppercase tracking-wider text-center ${statusColor} w-16">${statusText}</span>
                             </div>
-                            <div class="col-span-1 py-4 px-6 flex items-center justify-center">
-                                <button onclick="deleteLicense('${lic.key}')" class="text-rose-500 hover:text-rose-400 transition-colors">
+                            <div class="col-span-1 py-4 px-6 flex items-center justify-center space-x-1">
+                                ${actionIconHtml}
+                                <button onclick="deleteLicense('${lic.key}')" 
+                                    onmouseenter="showTooltip(event, 'Delete Key Permanently')" onmouseleave="hideTooltip()" 
+                                    class="text-zinc-500 hover:text-rose-500 p-1.5 transition-colors">
                                     <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                                 </button>
                             </div>
@@ -467,16 +472,7 @@
             } catch (error) { showToast("Operation Failed", true); }
         }
 
-        function resetActivation(key) {
-            showConfirm(`Are you sure you want to reset activation & clear hardware lock for license ${key}?`, async () => {
-                try {
-                    const response = await fetch(`${API_BASE}/admin/activate/${key}`, { headers: getHeaders() });
-                    if (!checkAuth(response.status)) return;
-                    showToast("Activation Reset Successful");
-                    fetchLicenses();
-                } catch (error) { showToast("Reset Failed", true); }
-            });
-        }
+
 
         function deleteLicense(key) {
             showConfirm(`Are you sure you want to delete license ${key}?`, async () => {
