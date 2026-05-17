@@ -84,21 +84,15 @@ The **Stealth Patch Engine** allows you to update your app's layout, styles, col
 
 ---
 
-## 🛠️ Developer Release Checklist & Deployment Architecture
+## 🛠️ Developer Release Checklist (For Future Reference)
 
-Use this checklist and architectural guide whenever you want to publish UI changes, update server features, or distribute new app engines.
-
-> [!IMPORTANT]
-> **Understanding File Target Deployments:**
-> 1. **`index.html` (Frontend / UI)**: Uploaded to **PythonAnywhere**. Updates silently and directly in the user's app *without* any dialog (Stealth Patch).
-> 2. **`license_server.py` (Backend Server)**: Uploaded to **PythonAnywhere** (renamed to `flask_app.py`). Runs the licensing API.
-> 3. **`app.py` (Desktop Client Engine)**: **DO NOT** upload this to PythonAnywhere! PythonAnywhere does not run `app.py`. Since users run compiled `.exe` files locally on their PCs, any changes to `app.py` (like PDF rendering or local window rules) require compiling a new `.exe` locally and distributing the installer to users.
+Use this checklist whenever you want to publish frontend UI edits or release major engine updates.
 
 ### 📂 Step 1: Push Changes to GitHub
-Commit your local workspace and push it to your private repository (this saves your code and automates the PythonAnywhere sync):
+Commit your local workspace and push it to your private repository:
 ```bash
 git add .
-git commit -m "feat: updated styles and silent update configurations"
+git commit -m "feat: added ota stealth patches and native self-updater engine"
 git push origin main
 ```
 
