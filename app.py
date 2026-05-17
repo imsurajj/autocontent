@@ -196,8 +196,8 @@ class Api:
                     with open(LICENSE_FILE, "w") as f:
                         json.dump({"date": datetime.now().isoformat(), "key": user_key, "user": user_name}, f)
                     self.is_activated = True
-                    # Update license settings info in UI
-                    self.window.evaluate_js(f"setLicenseInfo('{user_key}', '{user_name}', '{hwid}', true)")
+                    # Update license settings info in UI safely using json.dumps to avoid quote breaks!
+                    self.window.evaluate_js(f"setLicenseInfo({json.dumps(user_key)}, {json.dumps(user_name)}, {json.dumps(hwid)}, true)")
                     return True
         except: pass
         return False
@@ -232,6 +232,7 @@ class Api:
                 success = self.verify_key(user_key)
                 if success:
                     self.window.evaluate_js("setActivation(true)")
+                    self.window.evaluate_js("showPage('titles')") # Go to the first link of sidebar directly
                     return True
                 else:
                     # Clean up local cache since it is revoked or deleted on the server
@@ -242,7 +243,7 @@ class Api:
             except:
                 pass
         self.is_activated = False
-        self.window.evaluate_js(f"setLicenseInfo('', '', '{hwid}', false)")
+        self.window.evaluate_js(f"setLicenseInfo('', '', {json.dumps(hwid)}, false)")
         self.window.evaluate_js("setActivation(false)")
         return False
 

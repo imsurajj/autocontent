@@ -14,7 +14,7 @@
     <style>
         :root {
             --bg: #09090b;
-            --sidebar-bg: rgba(24, 24, 27, 0.5);
+            --sidebar-bg: #09090b;
             --card-bg: #18181b;
             --border: #27272a;
             --text: #fafafa;
@@ -27,7 +27,7 @@
 
         body.light-mode {
             --bg: #ffffff;
-            --sidebar-bg: rgba(244, 244, 245, 0.8);
+            --sidebar-bg: #ffffff;
             --card-bg: #f4f4f5;
             --border: #e4e4e7;
             --text: #09090b;
@@ -1191,6 +1191,7 @@
                     showToast("System Activated Successfully");
                     setActivation(true);
                     updateLog("License verified. Security gate released.", "text-emerald-400");
+                    showPage('titles'); // Automatically go to the first sidebar link (Titles)!
                 } else {
                     showToast("Invalid or Expired Key", true);
                     if (activateBtn) {

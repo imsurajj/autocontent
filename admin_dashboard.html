@@ -13,7 +13,7 @@
     <style>
         :root {
             --bg: #09090b;
-            --sidebar-bg: rgba(24, 24, 27, 0.5);
+            --sidebar-bg: #09090b;
             --card-bg: #18181b;
             --border: #27272a;
             --text: #fafafa;
@@ -26,7 +26,7 @@
 
         body.light-mode {
             --bg: #ffffff;
-            --sidebar-bg: rgba(244, 244, 245, 0.8);
+            --sidebar-bg: #ffffff;
             --card-bg: #f4f4f5;
             --border: #e4e4e7;
             --text: #09090b;
@@ -459,7 +459,22 @@
                 });
                 setStatus(true);
                 lucide.createIcons();
-            } catch (error) { setStatus(false); }
+            } catch (error) { 
+                setStatus(false);
+                if (!isAuto) {
+                    listContainer.innerHTML = `
+                        <div class="p-20 flex flex-col items-center justify-center space-y-4">
+                            <i data-lucide="wifi-off" class="w-8 h-8 text-rose-500 animate-pulse"></i>
+                            <div class="text-[11px] font-black text-rose-500 uppercase tracking-widest">Server Connection Offline</div>
+                            <div class="text-[10px] text-sub text-center max-w-sm leading-relaxed tracking-wider">Unable to connect to the licensing server. Please ensure the backend is running.</div>
+                            <button onclick="fetchLicenses()" class="mt-4 border border-theme hover:border-main bg-white/5 text-[9px] font-bold text-main px-6 py-2.5 uppercase tracking-widest transition-colors flex items-center shadow-lg">
+                                <i data-lucide="refresh-cw" class="w-3 h-3 mr-2"></i> Retry Connection
+                            </button>
+                        </div>
+                    `;
+                    lucide.createIcons();
+                }
+            }
             finally { refreshIcon.classList.remove('animate-spin-custom'); }
         }
 
