@@ -98,21 +98,27 @@ git push origin main
 
 ### 🌐 Step 2: Sync to PythonAnywhere
 
-#### Option A: Using Git (Fastest)
-1. Open the PythonAnywhere **Bash Console**.
-2. Run:
-   ```bash
-   cd ~/mysite
-   git pull
-   cp license_server.py flask_app.py
-   ```
-3. Go to the **Web** tab in PythonAnywhere and click **Reload**.
+Choose one of these two professional sync methods:
+
+#### Option A: Fully Automated GitHub Webhook (Recommended - CI/CD)
+This sets up a 100% automated pipeline. Every time you push to the `main` branch, GitHub automatically tells your server to run `git pull`, overwrite `flask_app.py`, and **instantly hot-reload your web application** without you ever needing to touch PythonAnywhere!
+
+1. Go to your **GitHub Repository Settings** on your web browser.
+2. Click on **Webhooks** in the left sidebar ──> click the **Add webhook** button.
+3. Configure the following settings exactly:
+   * **Payload URL**: `https://imsuraj.pythonanywhere.com/webhook/sync`
+   * **Content type**: `application/json`
+   * **Secret**: *(Leave blank)*
+   * **Trigger events**: Select **"Just the push event"**.
+4. Click **Add webhook** to save.
+5. **You're Done!** Now, simply push your code locally (`git push origin main`). Your licensing server automatically synchronizes and updates all users' apps instantly!
 
 #### Option B: Manual Upload
 1. Go to the **Files** tab on PythonAnywhere and enter the `mysite/` folder.
 2. Upload the updated `license_server.py` (rename/overwrite your main web file, e.g., `flask_app.py`).
 3. Upload `index.html` to the exact same `mysite/` folder.
-4. Go to the **Web** tab in PythonAnywhere and click **Reload**.
+4. Upload `admin_dashboard.html` to the exact same `mysite/` folder (so your license management dashboard is active!).
+5. Go to the **Web** tab in PythonAnywhere and click **Reload**.
 
 ### 🔨 Step 3: Compile the New EXE File
 Generate a standalone compiled executable for your users:
