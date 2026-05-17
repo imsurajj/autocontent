@@ -159,6 +159,43 @@
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
         }
 
+        /* Custom Premium Modal */
+        .custom-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--modal-overlay);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+
+        .custom-modal.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .custom-modal-content {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+            max-width: 420px;
+            width: 100%;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            transform: scale(0.95);
+            transition: transform 0.2s ease;
+        }
+
+        .custom-modal.show .custom-modal-content {
+            transform: scale(1);
+        }
+
         .toast.show {
             transform: translateX(0);
         }
@@ -375,8 +412,9 @@
         </div>
 
         <div class="flex-1 flex flex-col overflow-y-auto overflow-x-hidden custom-scrollbar">
+            <!-- CATEGORY: WORKFLOW ENGINE -->
             <div class="workflow-header h-[32px] px-6 flex items-center border-b border-theme bg-white/5 shrink-0">
-                <span class="text-[8px] font-bold text-sub uppercase tracking-widest">Workflow</span>
+                <span class="text-[8px] font-bold text-sub uppercase tracking-widest">Workflow Engine</span>
             </div>
 
             <nav class="flex flex-col">
@@ -400,11 +438,35 @@
                     <i data-lucide="terminal" class="w-3.5 h-3.5 mr-3 shrink-0"></i>
                     <span class="sidebar-label">Execution</span>
                 </button>
+            </nav>
+
+            <!-- CATEGORY: UTILITY TOOLS -->
+            <div class="workflow-header h-[32px] px-6 flex items-center border-b border-theme bg-white/5 shrink-0">
+                <span class="text-[8px] font-bold text-sub uppercase tracking-widest">Utility Tools</span>
+            </div>
+
+            <nav class="flex flex-col">
                 <button onclick="showPage('links')" id="nav-links"
                     class="sidebar-item w-full flex items-center px-6 h-[42px] border-b border-theme text-[9px] font-black text-sub transition-colors uppercase tracking-[0.15em]">
                     <i data-lucide="link-2" class="w-3.5 h-3.5 mr-3 shrink-0"></i>
                     <span class="sidebar-label">Link Gen</span>
-                    <span id="badge-link-gen" class="ml-auto border border-dashed border-emerald-500 text-emerald-500 text-[7px] font-black px-1.5 py-[2px] rounded-sm sidebar-label tracking-widest hidden">NEW</span>
+                    <span id="badge-link-gen"
+                        class="ml-auto border border-dashed border-emerald-500 text-emerald-500 text-[7px] font-black px-1.5 py-[2px] rounded-sm sidebar-label tracking-widest hidden">NEW</span>
+                </button>
+            </nav>
+
+            <!-- CATEGORY: SECURITY GATE -->
+            <div class="workflow-header h-[32px] px-6 flex items-center border-b border-theme bg-white/5 shrink-0">
+                <span class="text-[8px] font-bold text-sub uppercase tracking-widest">Security Gate</span>
+            </div>
+
+            <nav class="flex flex-col">
+                <button onclick="showPage('license')" id="nav-license"
+                    class="sidebar-item w-full flex items-center px-6 h-[42px] border-b border-theme text-[9px] font-black text-sub transition-colors uppercase tracking-[0.15em]">
+                    <i data-lucide="shield-check" class="w-3.5 h-3.5 mr-3 shrink-0"></i>
+                    <span class="sidebar-label">License Key</span>
+                    <span id="badge-license"
+                        class="ml-auto border border-dashed border-emerald-500 text-emerald-500 text-[7px] font-black px-1.5 py-[2px] rounded-sm sidebar-label tracking-widest hidden">NEW</span>
                 </button>
             </nav>
         </div>
@@ -427,7 +489,8 @@
 
             <!-- Tier 3: Version -->
             <div class="h-[32px] px-6 flex items-center justify-center">
-                <span id="version-tag" class="text-[7px] font-bold text-sub/30 uppercase tracking-[0.15em]">Current Version: v2.1.1</span>
+                <span id="version-tag" class="text-[7px] font-bold text-sub/30 uppercase tracking-[0.15em]">Current
+                    Version: v2.1.1</span>
             </div>
         </div>
     </aside>
@@ -685,6 +748,82 @@
                 </button>
             </div>
         </div>
+
+        <!-- 05. LICENSE VIEW -->
+        <div id="page-license" class="flex flex-col h-full hidden">
+            <div class="h-[52px] px-10 flex items-center bg-card-theme border-b border-theme">
+                <div class="flex items-center">
+                    <button onclick="toggleSidebar()"
+                        class="header-toggle mr-4 p-1.5 text-sub hover:text-main transition-colors">
+                        <i data-lucide="panel-left-open" class="w-4 h-4"></i>
+                    </button>
+                    <h2 class="text-[9px] font-bold text-sub uppercase tracking-widest">License & Activation</h2>
+                </div>
+            </div>
+
+            <div class="flex-1 flex flex-col bg-black/10">
+                <!-- ROW: LICENSE KEY (with mask toggle) -->
+                <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center group bg-zinc-950/20">
+                    <div
+                        class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
+                        Active License Key</div>
+                    <div class="col-span-9 h-full flex items-center px-10 justify-between">
+                        <div class="flex items-center space-x-3 w-full">
+                            <input type="password" id="license-key-display" readonly
+                                class="bg-transparent border-none outline-none text-xs text-main font-mono flex-1 select-all"
+                                value="UNACTIVATED">
+                            <button onclick="toggleKeyVisibility()" class="text-sub hover:text-main transition-colors p-1 flex items-center" title="Toggle Visibility">
+                                <i id="eye-icon" data-lucide="eye-off" class="w-3.5 h-3.5"></i>
+                            </button>
+                            <button onclick="copyLicenseKey()" class="text-sub hover:text-main transition-colors p-1 flex items-center" title="Copy License Key">
+                                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ROW: USER/REGISTERED TO -->
+                <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center group bg-zinc-950/20">
+                    <div
+                        class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
+                        Registered User</div>
+                    <div class="col-span-9 h-full flex items-center px-10">
+                        <span id="license-user-display" class="text-xs text-main uppercase font-bold tracking-widest">N/A</span>
+                    </div>
+                </div>
+
+                <!-- ROW: DEVICE IDENTIFIER -->
+                <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center group bg-zinc-950/20">
+                    <div
+                        class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
+                        Hardware Lock ID</div>
+                    <div class="col-span-9 h-full flex items-center px-10 justify-between">
+                        <span id="license-hwid-display" class="text-xs text-sub font-mono select-all">N/A</span>
+                    </div>
+                </div>
+
+                <!-- ROW: LICENSE STATUS -->
+                <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center group bg-zinc-950/20">
+                    <div
+                        class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
+                        License Status</div>
+                    <div class="col-span-9 h-full flex items-center px-10">
+                        <span id="license-status-badge" class="border border-rose-500/30 text-rose-500 text-[8px] font-black px-2 py-0.5 rounded-sm tracking-widest uppercase bg-rose-500/5">Unactivated</span>
+                    </div>
+                </div>
+
+                <!-- SPACER -->
+                <div class="flex-1"></div>
+
+                <!-- ACTION BAR -->
+                <div class="h-[64px] px-10 flex items-center justify-end bg-card-theme border-t border-theme">
+                    <button id="deactivate-btn" onclick="deactivateApp()" disabled
+                        class="bg-rose-600 hover:bg-rose-500 text-white px-8 h-[36px] text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-30 disabled:cursor-not-allowed">
+                        Deactivate License on This PC
+                    </button>
+                </div>
+            </div>
+        </div>
     </main>
 
     <script>
@@ -703,9 +842,9 @@
                 this.maxStackSize = 100;
                 this.isUndoingOrRedoing = false;
                 this.saveTimeout = null;
-                
+
                 this.saveState(true);
-                
+
                 this.textarea.addEventListener('input', (e) => {
                     if (this.isUndoingOrRedoing) return;
                     this.redoStack = [];
@@ -719,7 +858,7 @@
                         }, 500);
                     }
                 });
-                
+
                 this.textarea.addEventListener('keydown', (e) => {
                     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
                         e.preventDefault();
@@ -732,14 +871,14 @@
                     }
                 });
             }
-            
+
             saveState(checkDuplicate = true) {
                 const state = {
                     value: this.textarea.value,
                     selectionStart: this.textarea.selectionStart,
                     selectionEnd: this.textarea.selectionEnd
                 };
-                
+
                 const lastState = this.undoStack[this.undoStack.length - 1];
                 if (!checkDuplicate || !lastState || lastState.value !== state.value) {
                     if (lastState && lastState.value === state.value) return;
@@ -749,42 +888,42 @@
                     }
                 }
             }
-            
+
             undo() {
                 if (this.undoStack.length <= 1) return;
-                
+
                 this.isUndoingOrRedoing = true;
                 const currentState = this.undoStack.pop();
                 this.redoStack.push(currentState);
-                
+
                 const previousState = this.undoStack[this.undoStack.length - 1];
                 this.restoreState(previousState);
                 this.isUndoingOrRedoing = false;
             }
-            
+
             redo() {
                 if (this.redoStack.length === 0) return;
-                
+
                 this.isUndoingOrRedoing = true;
                 const nextState = this.redoStack.pop();
                 this.undoStack.push(nextState);
-                
+
                 this.restoreState(nextState);
                 this.isUndoingOrRedoing = false;
             }
-            
+
             restoreState(state) {
                 this.textarea.value = state.value;
                 this.textarea.selectionStart = state.selectionStart;
                 this.textarea.selectionEnd = state.selectionEnd;
-                
+
                 const type = this.textarea.id.split('-')[0];
                 if (typeof updateGutter === 'function') {
                     updateGutter(type);
                 }
             }
         }
-        
+
         function syncHistories() {
             if (window.titlesHistory) {
                 window.titlesHistory.undoStack = [];
@@ -797,21 +936,26 @@
                 window.contentHistory.saveState(false);
             }
         }
-        
+
         function checkNewBadges() {
             const now = new Date().getTime();
             const twoDays = 2 * 24 * 60 * 60 * 1000;
             // Feature release dates mapping
             const FEATURE_RELEASES = {
-                'link-gen': '2026-05-17T00:00:00Z'
+                'link-gen': '2026-05-17T00:00:00Z',
+                'license': '2026-05-17T00:00:00Z'
             };
-            
+
             if (now - new Date(FEATURE_RELEASES['link-gen']).getTime() < twoDays) {
                 const badge = document.getElementById('badge-link-gen');
                 if (badge) badge.classList.remove('hidden');
             }
+            if (now - new Date(FEATURE_RELEASES['license']).getTime() < twoDays) {
+                const badge = document.getElementById('badge-license');
+                if (badge) badge.classList.remove('hidden');
+            }
         }
-        
+
         function setSystemInfo(engineVer, patchHash) {
             const vTag = document.getElementById('version-tag');
             if (vTag) {
@@ -868,6 +1012,7 @@
                     runBtn.disabled = true;
                     runBtn.classList.add('opacity-50', 'cursor-not-allowed');
                 }
+                setLicenseInfo('', '', document.getElementById('license-hwid-display').innerText || 'N/A', false);
             }
             lucide.createIcons();
         }
@@ -895,11 +1040,65 @@
         }
 
         function showPage(pageId) {
-            document.querySelectorAll('main > div').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('main > div:not(#license-banner)').forEach(el => el.classList.add('hidden'));
             document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
             document.getElementById('nav-' + pageId).classList.add('active');
             document.getElementById('page-' + pageId).classList.remove('hidden');
             updateSidebarColors();
+        }
+
+        let keyVisible = false;
+        function toggleKeyVisibility() {
+            const input = document.getElementById('license-key-display');
+            const icon = document.getElementById('eye-icon');
+            keyVisible = !keyVisible;
+            if (keyVisible) {
+                input.type = 'text';
+                icon.setAttribute('data-lucide', 'eye');
+            } else {
+                input.type = 'password';
+                icon.setAttribute('data-lucide', 'eye-off');
+            }
+            lucide.createIcons();
+        }
+
+        function copyLicenseKey() {
+            const keyDisplay = document.getElementById('license-key-display');
+            if (keyDisplay.value === "UNACTIVATED" || !keyDisplay.value) {
+                showToast("No active key to copy", true);
+                return;
+            }
+            navigator.clipboard.writeText(keyDisplay.value).then(() => {
+                showToast("License key copied!");
+            }).catch(() => {
+                showToast("Failed to copy license key", true);
+            });
+        }
+
+        function setLicenseInfo(key, user, hwid, active) {
+            const keyDisplay = document.getElementById('license-key-display');
+            const userDisplay = document.getElementById('license-user-display');
+            const hwidDisplay = document.getElementById('license-hwid-display');
+            const statusBadge = document.getElementById('license-status-badge');
+            const deactivateBtn = document.getElementById('deactivate-btn');
+            
+            if (active) {
+                keyDisplay.value = key;
+                userDisplay.innerText = user || "Registered User";
+                hwidDisplay.innerText = hwid;
+                
+                statusBadge.innerText = "Activated";
+                statusBadge.className = "border border-emerald-500/30 text-emerald-500 text-[8px] font-black px-2 py-0.5 rounded-sm tracking-widest uppercase bg-emerald-500/5";
+                deactivateBtn.removeAttribute('disabled');
+            } else {
+                keyDisplay.value = "UNACTIVATED";
+                userDisplay.innerText = "N/A";
+                hwidDisplay.innerText = hwid;
+                
+                statusBadge.innerText = "Unactivated";
+                statusBadge.className = "border border-rose-500/30 text-rose-500 text-[8px] font-black px-2 py-0.5 rounded-sm tracking-widest uppercase bg-rose-500/5";
+                deactivateBtn.setAttribute('disabled', 'true');
+            }
         }
 
         function updateGutter(type) {
@@ -1133,7 +1332,7 @@
         applyTheme();
         checkNewBadges();
         setupScrollSync();
-        
+
         // Instantiate Histories globally
         window.titlesHistory = new TextareaHistory('titles-input', 'titles-gutter');
         window.contentHistory = new TextareaHistory('content-input', 'content-gutter');
@@ -1142,6 +1341,35 @@
         updateGutter('titles');
         updateGutter('content');
     </script>
+    
+    <!-- DEACTIVATION CONFIRMATION MODAL -->
+    <div id="deactivate-modal" class="custom-modal">
+        <div class="custom-modal-content">
+            <div class="flex items-center space-x-3 mb-6">
+                <i data-lucide="shield-alert" class="w-5 h-5 text-rose-500"></i>
+                <h3 class="text-[11px] font-black text-rose-500 uppercase tracking-widest">Confirm Deactivation</h3>
+            </div>
+            
+            <p class="text-xs text-sub leading-relaxed mb-6 font-medium">
+                Deactivating will **unbind** your license key from this machine's Hardware ID on our servers. 
+                <br><br>
+                This will lock the application and return it to **unactivated** mode, but it allows you to activate the same key on a **new computer**.
+                <br><br>
+                To use the application on this machine again, you will need to re-enter a valid license key. Are you sure you want to proceed?
+            </p>
+            
+            <div class="flex items-center justify-end space-x-3">
+                <button onclick="closeModal('deactivate-modal')"
+                    class="bg-zinc-800 hover:bg-zinc-700 text-sub hover:text-white px-6 h-[32px] text-[8px] font-black uppercase tracking-widest transition-all">
+                    Cancel
+                </button>
+                <button onclick="confirmDeactivation()"
+                    class="bg-rose-600 hover:bg-rose-500 text-white px-6 h-[32px] text-[8px] font-black uppercase tracking-widest transition-all">
+                    Deactivate Now
+                </button>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>

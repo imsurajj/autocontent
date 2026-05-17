@@ -192,14 +192,19 @@ class Api:
             with urllib.request.urlopen(req, timeout=10) as response:
                 result = json.loads(response.read().decode('utf-8'))
                 if result.get("status") == "success":
+                    user_name = result.get("user", "Active User")
                     with open(LICENSE_FILE, "w") as f:
-                        json.dump({"date": datetime.now().isoformat(), "key": user_key}, f)
+                        json.dump({"date": datetime.now().isoformat(), "key": user_key, "user": user_name}, f)
                     self.is_activated = True
+                    # Update license settings info in UI
+                    self.window.evaluate_js(f"setLicenseInfo('{user_key}', '{user_name}', '{hwid}', true)")
                     return True
         except: pass
         return False
 
     def check_initial_license(self):
+        import uuid
+        hwid = str(uuid.getnode())
         # 1. Fallback self-healing migration from Installer folder ({app}/license.key)
         installer_license = EXE_DIR / "license.key"
         if installer_license.exists():
@@ -208,14 +213,12 @@ class Api:
                     inst_data = json.load(f)
                     user_key = inst_data.get("key", "")
                 if user_key:
-                    # Copy the key over to the current standard user's AppData
                     with open(LICENSE_FILE, "w") as f:
                         json.dump({"date": datetime.now().isoformat(), "key": user_key}, f)
-                    # Try to clean up/delete the file from the installation folder
                     try:
                         installer_license.unlink()
                     except:
-                        pass # Non-admin launch might make this read-only; that is fine
+                        pass
             except Exception as e:
                 print(f"[License Migration] Error migrating installer key: {str(e)}")
 
@@ -225,10 +228,13 @@ class Api:
                 with open(LICENSE_FILE, "r") as f:
                     data = json.load(f)
                     user_key = data.get("key", "")
-                if self.verify_key(user_key):
+                    user_name = data.get("user", "Active User")
+                success = self.verify_key(user_key)
+                if success:
                     self.window.evaluate_js("setActivation(true)")
                     return True
             except: pass
+        self.window.evaluate_js(f"setLicenseInfo('', '', '{hwid}', false)")
         self.window.evaluate_js("setActivation(false)")
         return False
 
