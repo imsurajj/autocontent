@@ -350,8 +350,15 @@ def github_webhook():
         if os.path.exists(wsgi_file):
             os.utime(wsgi_file, None)
         else:
-            # Fallback check if username is different
-            username = os.path.basename(os.path.dirname(running_dir))
+            # Fallback check: extract the exact PythonAnywhere username from the path
+            parts = [p for p in running_dir.replace('\\', '/').split('/') if p]
+            if len(parts) >= 2 and parts[0] == 'home':
+                username = parts[1]
+            else:
+                username = os.path.basename(os.path.dirname(running_dir))
+                if username == 'home' and len(parts) > 0:
+                    username = parts[0]
+            
             alt_wsgi = f"/var/www/{username}_pythonanywhere_com_wsgi.py"
             if os.path.exists(alt_wsgi):
                 os.utime(alt_wsgi, None)
