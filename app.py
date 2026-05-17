@@ -133,73 +133,6 @@ class Api:
         self.update_url = None
         self.remote_version = None
 
-    def check_major_updates(self):
-        """Checks the server for a major executable (engine) update."""
-        try:
-            req = urllib.request.Request(
-                f"{LICENSE_API_URL}/api/v1/update/check", 
-                headers={"User-Agent": "AutoContentPro-Client"}
-            )
-            with urllib.request.urlopen(req, timeout=4) as response:
-                res_data = json.loads(response.read().decode('utf-8'))
-                remote_version = res_data.get("version")
-                download_url = res_data.get("url")
-                
-                # Compare versions using simple parser
-                if remote_version:
-                    # Quick semantic version parser (e.g. "2.1.0" -> [2, 1, 0])
-                    def parse_v(v_str):
-                        return [int(x) for x in re.sub(r"[^\d\.]", "", v_str).split(".")]
-                        
-                    if parse_v(remote_version) > parse_v(APP_VERSION):
-                        self.update_url = download_url
-                        self.remote_version = remote_version
-                        # Notify UI to show the dynamic update banner
-                        self.window.evaluate_js(f"showUpdateBanner('{remote_version}')")
-        except:
-            pass
-
-    def trigger_engine_update(self):
-        """Downloads the new executable and triggers the self-overwriting batch command."""
-        if not self.update_url:
-            return {"success": False, "error": "No update URL available"}
-            
-        def downloader():
-            try:
-                self.window.evaluate_js("setUpdateBtnState('downloading')")
-                temp_exe = USER_DATA_DIR / "temp_update.exe"
-                
-                # Download the new binary from Flask update distribution
-                req = urllib.request.Request(self.update_url, headers={"User-Agent": "AutoContentPro-Client"})
-                with urllib.request.urlopen(req, timeout=60) as response:
-                    data = response.read()
-                    
-                # Write to AppData
-                temp_exe.write_bytes(data)
-                
-                self.window.evaluate_js("setUpdateBtnState('applying')")
-                
-                # Paths resolved
-                exe_path = sys.executable
-                temp_exe_str = str(temp_exe)
-                
-                # Bulletproof Windows terminal command:
-                # 1. Wait 2 seconds (allows main app to exit and release file locks)
-                # 2. Silently overwrite running exe with downloaded temp exe
-                # 3. Launch the new exe
-                # 4. Clean up / delete the temp file
-                cmd = f'timeout /t 2 && copy /y "{temp_exe_str}" "{exe_path}" && start "" "{exe_path}" && del "{temp_exe_str}"'
-                
-                subprocess.Popen(cmd, shell=True)
-                
-                # Exit process immediately to unlock original exe file
-                os._exit(0)
-            except Exception as e:
-                self.window.evaluate_js(f"setUpdateBtnState('error', '{str(e)}')")
-                
-        threading.Thread(target=downloader, daemon=True).start()
-        return {"success": True}
-
     def load_settings(self):
         if SETTINGS_FILE.exists():
             try:
@@ -367,7 +300,7 @@ def start_app():
         html_file = get_resource_path("index.html")
     window = webview.create_window('AutoContent Pro | Ultimate Engine', html_file, width=1100, height=750, min_size=(900, 600), background_color='#09090b')
     api = Api(window)
-    window.expose(api.verify_key, api.select_folder, api.run_batch, api.deactivate, api.trigger_engine_update)
+    window.expose(api.verify_key, api.select_folder, api.run_batch, api.deactivate)
     def on_loaded():
         # Get the patch status to show in console and version tag
         cached_hash_file = USER_DATA_DIR / "patch_hash.txt"
@@ -388,15 +321,14 @@ def start_app():
             document.getElementById('prefix').value = {json.dumps(js_data['prefix'])};
             document.getElementById('start-num').value = {json.dumps(js_data['start_num'])};
             document.getElementById('output-folder').value = {json.dumps(js_data['folder'])};
-            document.getElementById('version-tag').innerText = "Current Version: v{APP_VERSION}{patch_tag}";
+            if(typeof setSystemInfo === 'function') {{
+                setSystemInfo('{APP_VERSION}', '{patch_tag}');
+            }}
             updateGutter('titles'); updateGutter('content');
             updateLog('System initialized. {patch_info} operational.', 'text-zinc-400');
         """
         window.evaluate_js(js_code)
         api.check_initial_license()
-        
-        # Asynchronously check for major executable patches in background
-        threading.Thread(target=api.check_major_updates, daemon=True).start()
     window.events.loaded += on_loaded
     webview.start()
 
