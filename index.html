@@ -769,9 +769,9 @@
                         Active License Key</div>
                     <div class="col-span-9 h-full flex items-center px-10 justify-between">
                         <div class="flex items-center space-x-3 w-full">
-                            <input type="password" id="license-key-display" readonly
+                            <input type="password" id="license-key-display"
                                 class="bg-transparent border-none outline-none text-xs text-main font-mono flex-1 select-all"
-                                value="UNACTIVATED">
+                                value="" placeholder="ENTER LICENSE KEY TO ACTIVATE">
                             <button onclick="toggleKeyVisibility()" class="text-sub hover:text-main transition-colors p-1 flex items-center" title="Toggle Visibility">
                                 <i id="eye-icon" data-lucide="eye-off" class="w-3.5 h-3.5"></i>
                             </button>
@@ -807,20 +807,13 @@
                     <div
                         class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
                         License Status</div>
-                    <div class="col-span-9 h-full flex items-center px-10">
+                    <div class="col-span-9 h-full flex items-center px-10 justify-between">
                         <span id="license-status-badge" class="border border-rose-500/30 text-rose-500 text-[8px] font-black px-2 py-0.5 rounded-sm tracking-widest uppercase bg-rose-500/5">Unactivated</span>
+                        <button id="license-action-btn" onclick="handleLicenseAction()"
+                            class="bg-blue-600 hover:bg-blue-500 text-white px-5 h-[28px] text-[8px] font-black uppercase tracking-widest transition-all">
+                            Activate System
+                        </button>
                     </div>
-                </div>
-
-                <!-- SPACER -->
-                <div class="flex-1"></div>
-
-                <!-- ACTION BAR -->
-                <div class="h-[64px] px-10 flex items-center justify-end bg-card-theme border-t border-theme">
-                    <button id="deactivate-btn" onclick="deactivateApp()" disabled
-                        class="bg-rose-600 hover:bg-rose-500 text-white px-8 h-[36px] text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-30 disabled:cursor-not-allowed">
-                        Deactivate License on This PC
-                    </button>
                 </div>
             </div>
         </div>
@@ -1010,6 +1003,7 @@
         function setActivation(active) {
             const banner = document.getElementById('license-banner');
             const runBtn = document.getElementById('run-btn');
+            window.isActivated = active;
 
             if (active) {
                 if (banner) banner.classList.add('hidden');
@@ -1023,8 +1017,18 @@
                     runBtn.disabled = true;
                     runBtn.classList.add('opacity-50', 'cursor-not-allowed');
                 }
-                setLicenseInfo('', '', document.getElementById('license-hwid-display').innerText || 'N/A', false);
             }
+            
+            const hwidEl = document.getElementById('license-hwid-display');
+            const hwid = (hwidEl && hwidEl.innerText !== 'N/A') ? hwidEl.innerText : '';
+            
+            if (active) {
+                // If activated, let verify_key or initial startup handle the grid details
+            } else {
+                // If deactivated, reset grid details and apply correct visibility to action buttons
+                setLicenseInfo('', '', hwid || 'N/A', false);
+            }
+            
             lucide.createIcons();
         }
 
@@ -1075,7 +1079,7 @@
 
         function copyLicenseKey() {
             const keyDisplay = document.getElementById('license-key-display');
-            if (keyDisplay.value === "UNACTIVATED" || !keyDisplay.value) {
+            if (!keyDisplay.value || keyDisplay.placeholder === "ENTER LICENSE KEY TO ACTIVATE") {
                 showToast("No active key to copy", true);
                 return;
             }
@@ -1091,24 +1095,69 @@
             const userDisplay = document.getElementById('license-user-display');
             const hwidDisplay = document.getElementById('license-hwid-display');
             const statusBadge = document.getElementById('license-status-badge');
-            const deactivateBtn = document.getElementById('deactivate-btn');
+            const actionBtn = document.getElementById('license-action-btn');
             
             if (active) {
                 keyDisplay.value = key;
+                keyDisplay.setAttribute('readonly', 'true');
+                keyDisplay.placeholder = "";
                 userDisplay.innerText = user || "Registered User";
                 hwidDisplay.innerText = hwid;
                 
                 statusBadge.innerText = "Activated";
                 statusBadge.className = "border border-emerald-500/30 text-emerald-500 text-[8px] font-black px-2 py-0.5 rounded-sm tracking-widest uppercase bg-emerald-500/5";
-                deactivateBtn.removeAttribute('disabled');
+                
+                actionBtn.innerText = "Deactivate";
+                actionBtn.className = "bg-rose-600 hover:bg-rose-500 text-white px-5 h-[28px] text-[8px] font-black uppercase tracking-widest transition-all rounded-sm";
+                actionBtn.disabled = false;
             } else {
-                keyDisplay.value = "UNACTIVATED";
+                keyDisplay.value = "";
+                keyDisplay.removeAttribute('readonly');
+                keyDisplay.placeholder = "ENTER LICENSE KEY TO ACTIVATE";
                 userDisplay.innerText = "N/A";
                 hwidDisplay.innerText = hwid;
                 
                 statusBadge.innerText = "Unactivated";
                 statusBadge.className = "border border-rose-500/30 text-rose-500 text-[8px] font-black px-2 py-0.5 rounded-sm tracking-widest uppercase bg-rose-500/5";
-                deactivateBtn.setAttribute('disabled', 'true');
+                
+                actionBtn.innerText = "Activate System";
+                actionBtn.className = "bg-blue-600 hover:bg-blue-500 text-white px-5 h-[28px] text-[8px] font-black uppercase tracking-widest transition-all rounded-sm";
+                actionBtn.disabled = false;
+            }
+        }
+
+        async function handleLicenseAction() {
+            const actionBtn = document.getElementById('license-action-btn');
+            const keyDisplay = document.getElementById('license-key-display');
+            
+            if (actionBtn.innerText.toUpperCase().includes("DEACTIVATE")) {
+                deactivateApp();
+            } else {
+                const key = keyDisplay.value.trim();
+                if (!key) {
+                    showToast("Enter License Key", true);
+                    return;
+                }
+                
+                actionBtn.disabled = true;
+                actionBtn.innerText = "VERIFYING...";
+                
+                try {
+                    const success = await pywebview.api.verify_key(key);
+                    if (success) {
+                        showToast("System Activated Successfully");
+                        setActivation(true);
+                        updateLog("License verified. Security gate released.", "text-emerald-400");
+                    } else {
+                        showToast("Invalid or Expired Key", true);
+                        actionBtn.disabled = false;
+                        actionBtn.innerText = "Activate System";
+                    }
+                } catch (err) {
+                    showToast("Verification Error", true);
+                    actionBtn.disabled = false;
+                    actionBtn.innerText = "Activate System";
+                }
             }
         }
 
@@ -1213,6 +1262,10 @@
         }
 
         async function startGeneration() {
+            if (!window.isActivated) {
+                showToast("License activation required to generate documents", true);
+                return;
+            }
             if (isGenerating) return;
 
             const titles = document.getElementById('titles-input').value;
@@ -1254,6 +1307,10 @@
         }
 
         function generateBulkLinks() {
+            if (!window.isActivated) {
+                showToast("License activation required to build URLs", true);
+                return;
+            }
             let startUrl = document.getElementById('link-start-url').value.trim();
             let pathName = document.getElementById('link-path-name').value.trim();
             const fromNum = parseInt(document.getElementById('link-num-from').value);

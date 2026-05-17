@@ -239,6 +239,8 @@ class Api:
         return False
 
     def run_batch(self, titles_raw, content_raw, config):
+        if not self.is_activated:
+            return {"success": False, "error": "License not activated"}
         if self.is_generating: return {"success": False, "error": "Already running"}
         self.is_generating = True
         
