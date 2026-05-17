@@ -5,8 +5,8 @@
 ; --- App Metadata ---
 AppId={{C7A9E2B1-4A5B-4E3F-8C7D-9E0A1B2C3D4E}
 AppName=AutoContent Pro
-AppVersion=1.1.0
-AppVerName=AutoContent Pro v1.1.0
+AppVersion=2.0.0
+AppVerName=AutoContent Pro v2.0.0
 AppPublisher=AutoContent Pro Team
 AppPublisherURL=https://github.com/imsurajj/autocontent
 AppSupportURL=https://github.com/imsurajj/autocontent/issues
@@ -17,7 +17,7 @@ DefaultDirName={autopf}\AutoContent Pro
 DefaultGroupName=AutoContent Pro
 AllowNoIcons=yes
 OutputDir=Output
-OutputBaseFilename=AutoContent_Pro_v1.1.0_Setup
+OutputBaseFilename=AutoContent_Pro_v2.0.0_Setup
 
 ; --- Branding & UI ---
 SetupIconFile=image\logo.ico
@@ -50,7 +50,7 @@ Name: "startupicon"; Description: "Launch AutoContent Pro at &Windows startup"; 
 
 [Files]
 ; Main executable (built by PyInstaller)
-Source: "dist\AutoContent_Ultimate.exe"; DestDir: "{app}"; DestName: "AutoContentPro.exe"; Flags: ignoreversion
+Source: "dist\app.exe"; DestDir: "{app}"; DestName: "AutoContentPro.exe"; Flags: ignoreversion
 ; Bundled assets
 Source: "image\logo.png"; DestDir: "{app}\image"; Flags: ignoreversion
 Source: "image\logo.ico"; DestDir: "{app}\image"; Flags: ignoreversion
@@ -75,7 +75,8 @@ Type: filesandordirs; Name: "{app}"
 
 function CheckSerial(Serial: String): Boolean;
 begin
-  Result := Trim(Serial) = 'anytime2026';
+  // Accept any standard license key format that is at least 8 characters long
+  Result := Length(Trim(Serial)) >= 8;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -116,13 +117,15 @@ procedure CreateLicenseFile;
 var
   LicensePath: String;
   DateStr: String;
+  UserKey: String;
   FileContent: String;
 begin
-  LicensePath := ExpandConstant('{userappdata}\AutoContent Pro\license.key');
+  LicensePath := ExpandConstant('{app}\license.key');
   DateStr := GetDateTimeString('yyyy-mm-dd', '-', '-') + 'T' +
              GetDateTimeString('hh:nn:ss', ':', ':');
-  FileContent := '{"date": "' + DateStr + '", ' +
-                 '"key": "d98d6111195555816560a714cbdd9bda62ff006f7fd4757ba188b3852cbedb27"}';
+  UserKey := Trim(WizardForm.UserInfoSerialEdit.Text);
+  // Write key as valid JSON matching client-side app.py expectations
+  FileContent := '{"date": "' + DateStr + '", "key": "' + UserKey + '"}';
   ForceDirectories(ExtractFilePath(LicensePath));
   SaveStringToFile(LicensePath, FileContent, False);
 end;

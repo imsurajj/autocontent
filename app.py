@@ -41,8 +41,28 @@ def check_and_apply_patches():
     """
     cached_html = USER_DATA_DIR / "index.html"
     cached_hash_file = USER_DATA_DIR / "patch_hash.txt"
+    version_tracking_file = USER_DATA_DIR / "engine_version.txt"
     bundled_html = get_resource_path("index.html")
     
+    # 1. Version-Based Cache-Busting
+    upgraded = False
+    if version_tracking_file.exists():
+        try:
+            saved_version = version_tracking_file.read_text(encoding="utf-8").strip()
+            if saved_version != APP_VERSION:
+                upgraded = True
+        except:
+            upgraded = True
+    else:
+        upgraded = True
+        
+    if upgraded:
+        try:
+            if cached_html.exists(): cached_html.unlink()
+            if cached_hash_file.exists(): cached_hash_file.unlink()
+            version_tracking_file.write_text(APP_VERSION, encoding="utf-8")
+        except: pass
+        
     # By default, use bundled file if no cached patch exists
     html_to_load = str(bundled_html)
     if cached_html.exists():
@@ -247,6 +267,26 @@ class Api:
         return False
 
     def check_initial_license(self):
+        # 1. Fallback self-healing migration from Installer folder ({app}/license.key)
+        installer_license = EXE_DIR / "license.key"
+        if installer_license.exists():
+            try:
+                with open(installer_license, "r") as f:
+                    inst_data = json.load(f)
+                    user_key = inst_data.get("key", "")
+                if user_key:
+                    # Copy the key over to the current standard user's AppData
+                    with open(LICENSE_FILE, "w") as f:
+                        json.dump({"date": datetime.now().isoformat(), "key": user_key}, f)
+                    # Try to clean up/delete the file from the installation folder
+                    try:
+                        installer_license.unlink()
+                    except:
+                        pass # Non-admin launch might make this read-only; that is fine
+            except Exception as e:
+                print(f"[License Migration] Error migrating installer key: {str(e)}")
+
+        # 2. Standard Activation Check
         if LICENSE_FILE.exists():
             try:
                 with open(LICENSE_FILE, "r") as f:

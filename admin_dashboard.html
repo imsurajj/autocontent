@@ -226,10 +226,11 @@
         <div id="page-licenses" class="flex flex-col h-full">
             <section class="flex-1 flex flex-col overflow-hidden">
                 <div class="grid grid-cols-12 bg-card-theme border-b border-theme text-[9px] font-bold text-sub uppercase tracking-wider sticky top-0 z-10 h-[52px] items-center">
-                    <div class="col-span-3 py-4 px-10 border-r border-theme h-full flex items-center">License Key</div>
-                    <div class="col-span-3 py-4 px-10 border-r border-theme h-full flex items-center">Customer Name</div>
+                    <div class="col-span-2 py-4 px-6 border-r border-theme h-full flex items-center">License Key</div>
+                    <div class="col-span-2 py-4 px-6 border-r border-theme h-full flex items-center">Customer Name</div>
                     <div class="col-span-2 py-4 px-6 border-r border-theme text-center h-full flex items-center justify-center">Days Left</div>
-                    <div class="col-span-3 py-4 px-6 border-r border-theme text-center h-full flex items-center justify-center">Active Status</div>
+                    <div class="col-span-3 py-4 px-6 border-r border-theme text-center h-full flex items-center justify-center">Last Login</div>
+                    <div class="col-span-2 py-4 px-6 border-r border-theme text-center h-full flex items-center justify-center">Active Status</div>
                     <div class="col-span-1 py-4 px-6 text-center h-full flex items-center justify-center">Del</div>
                 </div>
 
@@ -414,17 +415,18 @@
 
                     listContainer.innerHTML += `
                         <div class="grid grid-cols-12 items-center hover:bg-[var(--row-hover)] transition-colors group border-b border-theme">
-                            <div class="col-span-3 py-4 px-10 border-r border-theme font-mono text-[12px] tracking-tight">
+                            <div class="col-span-2 py-4 px-6 border-r border-theme font-mono text-[11px] tracking-tight">
                                 <span class="key-text truncate block text-main" onmouseenter="showTooltip(event, 'Click to copy')" onmouseleave="hideTooltip()" onclick="copyToClipboard('${lic.key}', this)">${lic.key}</span>
                             </div>
-                            <div class="col-span-3 py-4 px-10 border-r border-theme text-[12px] text-sub truncate">${lic.user_name}</div>
-                            <div class="col-span-2 py-4 px-6 border-r border-theme text-center text-[12px] ${daysColor}">${daysLeft}</div>
-                            <div class="col-span-3 py-4 px-6 border-r border-theme flex items-center justify-center space-x-4">
+                            <div class="col-span-2 py-4 px-6 border-r border-theme text-[11px] text-sub truncate">${lic.user_name}</div>
+                            <div class="col-span-2 py-4 px-6 border-r border-theme text-center text-[11px] ${daysColor}">${daysLeft}</div>
+                            <div class="col-span-3 py-4 px-6 border-r border-theme text-center text-[11px] text-sub font-mono">${lic.last_login || 'Never'}</div>
+                            <div class="col-span-2 py-4 px-6 border-r border-theme flex items-center justify-center space-x-2">
                                 <label class="switch">
                                     <input type="checkbox" ${isChecked} onchange="toggleStatus('${lic.key}', '${action}')">
                                     <span class="slider"></span>
                                 </label>
-                                <span class="text-[8px] font-bold tracking-widest ${statusColor} w-12">${statusText}</span>
+                                <span class="text-[8px] font-bold tracking-widest ${statusColor} w-10 text-center">${statusText}</span>
                             </div>
                             <div class="col-span-1 py-4 px-6 flex items-center justify-center">
                                 <button onclick="deleteLicense('${lic.key}')" class="text-rose-500 hover:text-rose-400 transition-colors">

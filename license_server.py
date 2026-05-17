@@ -10,7 +10,6 @@ app = Flask(__name__)
 CORS(app)
 
 # CONFIGURATION
-# Default password is 'anytime2027'. Hash is below:
 ADMIN_PASSWORD_HASH = "89249c5c307f1ec72dc7ee389fd9d2acbccd37ca8666a91bc4201525f734cfff"
 DB_PATH = os.path.join(os.path.dirname(__file__), 'licenses.db')
 
@@ -23,14 +22,22 @@ def init_db():
                   status TEXT, 
                   created_at TEXT, 
                   duration_days INTEGER,
-                  hwid TEXT)''')
-    # If the database already existed without hwid, let's add it dynamically
+                  hwid TEXT,
+                  last_login TEXT)''')
+    # If the database already existed, add columns dynamically
     try:
         c.execute("ALTER TABLE licenses ADD COLUMN hwid TEXT")
     except sqlite3.OperationalError:
         pass  # Column already exists
+    try:
+        c.execute("ALTER TABLE licenses ADD COLUMN last_login TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
     conn.commit()
     conn.close()
+
+# Auto-initialize database tables on server load/import
+init_db()
 
 # SECURITY DECORATOR
 def require_admin(f):
@@ -77,7 +84,7 @@ def verify_license(key):
 def list_licenses():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT key, user_name, status, created_at, duration_days FROM licenses")
+    c.execute("SELECT key, user_name, status, created_at, duration_days, last_login FROM licenses")
     rows = c.fetchall()
     conn.close()
     
@@ -88,7 +95,8 @@ def list_licenses():
             "user_name": row[1],
             "status": row[2],
             "created_at": row[3],
-            "duration_days": row[4]
+            "duration_days": row[4],
+            "last_login": row[5] if row[5] else "Never"
         })
     return jsonify({"licenses": licenses})
 
@@ -99,11 +107,15 @@ def add_license(key):
     duration = int(request.args.get('duration', 365))
     created_at = datetime.now().isoformat()
     
+    # Standardize formatting to UPPERCASE and dashless, matching verification!
+    import re
+    clean_key = re.sub(r"[\s\-]+", "", key).upper()
+    
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute("INSERT INTO licenses VALUES (?, ?, 'Active', ?, ?)", 
-                 (key, user_name, created_at, duration))
+        c.execute("INSERT INTO licenses (key, user_name, status, created_at, duration_days) VALUES (?, ?, 'Active', ?, ?)", 
+                 (clean_key, user_name, created_at, duration))
         conn.commit()
         conn.close()
         return jsonify({"message": "License added successfully"}), 200
@@ -181,13 +193,17 @@ def verify_license_post():
     if not stored_hwid:
         # First activation: Bind the HWID!
         c.execute("UPDATE licenses SET hwid=? WHERE key=?", (hwid, user_key))
-        conn.commit()
         stored_hwid = hwid
         
     if hwid and stored_hwid != hwid:
         conn.close()
         return jsonify({"status": "error", "message": "License key already active on another machine"}), 403
         
+    # 4. Update Last Login details in 12-hour format with AM/PM (e.g. 2026-05-17 11:07 AM)
+    login_time = datetime.now().strftime("%Y-%m-%d %I:%M %p")
+    c.execute("UPDATE licenses SET last_login=? WHERE key=?", (login_time, user_key))
+    conn.commit()
+    
     conn.close()
     return jsonify({"status": "success", "user": user_name}), 200
 
@@ -295,5 +311,4 @@ def github_webhook():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
-    init_db()
     app.run(debug=True)

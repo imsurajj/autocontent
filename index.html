@@ -217,25 +217,7 @@
         </div>
     </div>
 
-    <!-- LOCK MODAL (Licensing) -->
-    <div id="lock-modal" class="modal-overlay">
-        <div class="modal-box">
-            <div class="flex items-center mb-5">
-                <i data-lucide="shield-alert" class="w-6 h-6 mr-3 text-rose-500"></i>
-                <h1 class="text-[9px] font-black tracking-[0.3em] uppercase text-main">Activation Required</h1>
-            </div>
-            <p class="text-[9px] text-sub uppercase font-bold tracking-[0.15em] mb-6 leading-relaxed">License expired or missing. Enter your key to unlock.</p>
-            <input type="password" id="license-key-input" 
-                   onkeydown="if(event.key === 'Enter') verifyKey()"
-                   placeholder="AC-PRO-XXXX-XXXX" 
-                   class="w-full bg-[var(--input-bg)] border border-theme px-4 py-3 rounded-none text-main text-xs mb-6 placeholder-sub/30 focus:border-accent transition-all font-mono outline-none">
-            <div class="flex justify-center">
-                <button id="verify-btn" onclick="verifyKey()" class="w-full bg-white text-black h-[36px] text-[9px] font-black uppercase tracking-[0.2em] hover:bg-zinc-200 transition-all shadow-xl disabled:opacity-50">
-                    <span id="verify-btn-text">Activate License</span>
-                </button>
-            </div>
-        </div>
-    </div>
+
 
     <!-- SIDEBAR -->
     <aside id="sidebar" class="w-[230px] flex flex-col border-r border-theme bg-sidebar-theme shrink-0">
@@ -274,10 +256,7 @@
 
         <!-- SIDEBAR FOOTER -->
         <div class="border-t border-theme flex flex-col bg-white/5">
-            <!-- Tier 1: Action -->
-            <div id="sidebar-activate-section" class="p-3 border-b border-theme">
-                <button id="sidebar-activate-btn" onclick="openModal('lock-modal')" class="w-full bg-white text-black px-3 h-[30px] text-[8px] font-black uppercase tracking-widest hover:bg-zinc-200 transition-all">Activate License</button>
-            </div>
+
 
             <!-- Tier 1.5: Major Update Available Banner -->
             <div id="update-banner" class="hidden p-3.5 border-b border-theme bg-blue-500/5 border-blue-500/10">
@@ -312,6 +291,22 @@
     </aside>
 
     <main class="flex-1 flex flex-col min-w-0">
+        <!-- SYSTEM LICENSE ALERT BANNER -->
+        <div id="license-banner" class="hidden shrink-0 border-b border-rose-500/20 bg-rose-950/20 px-10 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-rose-500 shrink-0"></i>
+                <span class="text-[9px] font-black tracking-[0.2em] text-rose-400 uppercase">License expired or unactivated. Please activate to enable generation.</span>
+            </div>
+            <div class="flex items-center space-x-2">
+                <input type="text" id="license-banner-input" 
+                       placeholder="ENTER ACTIVATION KEY" 
+                       onkeydown="if(event.key === 'Enter') verifyKeyBanner()"
+                       class="bg-[var(--input-bg)] border border-rose-500/30 px-3 py-1 text-main text-[9px] placeholder-rose-500/20 focus:border-rose-500 font-mono outline-none w-[180px] h-[26px] rounded-none uppercase">
+                <button id="banner-verify-btn" onclick="verifyKeyBanner()" class="bg-rose-600 hover:bg-rose-500 text-white px-4 h-[26px] text-[8px] font-black uppercase tracking-widest transition-all">
+                    Activate
+                </button>
+            </div>
+        </div>
         <!-- 01. TITLES VIEW -->
         <div id="page-titles" class="flex flex-col h-full">
             <div class="h-[52px] px-10 flex items-center justify-between bg-card-theme border-b border-theme">
@@ -465,18 +460,21 @@
         }
 
         function setActivation(active) {
-            const modal = document.getElementById('lock-modal');
-            const sidebarBtn = document.getElementById('sidebar-activate-btn');
-            const sidebarSection = document.getElementById('sidebar-activate-section');
+            const banner = document.getElementById('license-banner');
+            const runBtn = document.getElementById('run-btn');
             
             if (active) {
-                modal.classList.remove('show');
-                if (sidebarBtn) sidebarBtn.classList.add('hidden');
-                if (sidebarSection) sidebarSection.classList.add('hidden');
+                if (banner) banner.classList.add('hidden');
+                if (runBtn) {
+                    runBtn.disabled = false;
+                    runBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
             } else {
-                modal.classList.add('show');
-                if (sidebarBtn) sidebarBtn.classList.remove('hidden');
-                if (sidebarSection) sidebarSection.classList.remove('hidden');
+                if (banner) banner.classList.remove('hidden');
+                if (runBtn) {
+                    runBtn.disabled = true;
+                    runBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                }
             }
             lucide.createIcons();
         }
@@ -567,15 +565,15 @@
             gutter.innerHTML = gutterHtml;
         }
 
-        async function verifyKey() {
-            const key = document.getElementById('license-key-input').value;
-            const btn = document.getElementById('verify-btn');
-            const btnText = document.getElementById('verify-btn-text');
+        async function verifyKeyBanner() {
+            const keyInput = document.getElementById('license-banner-input');
+            const key = keyInput.value;
+            const btn = document.getElementById('banner-verify-btn');
             
             if (!key) return showToast("Enter License Key", true);
             
             btn.disabled = true;
-            btnText.innerText = "VERIFYING...";
+            btn.innerText = "VERIFYING...";
             
             try {
                 const success = await pywebview.api.verify_key(key);
@@ -586,12 +584,12 @@
                 } else {
                     showToast("Invalid or Expired Key", true);
                     btn.disabled = false;
-                    btnText.innerText = "Activate License";
+                    btn.innerText = "ACTIVATE";
                 }
             } catch (err) {
                 showToast("Verification Error", true);
                 btn.disabled = false;
-                btnText.innerText = "Activate License";
+                btn.innerText = "ACTIVATE";
             }
         }
 
