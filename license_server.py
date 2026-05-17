@@ -2,7 +2,7 @@ import os
 import sqlite3
 import hashlib
 from datetime import datetime
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, redirect
 from flask_cors import CORS
 from functools import wraps
 
@@ -57,9 +57,9 @@ def require_admin(f):
 
 @app.route('/verify/<key>', methods=['GET'])
 def verify_license(key):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT user_name, status, created_at, duration_days FROM licenses WHERE key=?", (key,))
+    import re
+    clean_key = re.sub(r"[\s\-]+", "", key).upper()
+    c.execute("SELECT user_name, status, created_at, duration_days FROM licenses WHERE UPPER(REPLACE(REPLACE(key, '-', ''), ' ', ''))=?", (clean_key,))
     row = c.fetchone()
     conn.close()
 
@@ -107,15 +107,15 @@ def add_license(key):
     duration = int(request.args.get('duration', 365))
     created_at = datetime.now().isoformat()
     
-    # Standardize formatting to UPPERCASE and dashless, matching verification!
-    import re
-    clean_key = re.sub(r"[\s\-]+", "", key).upper()
+    # Preserve dashes/formatting exactly as entered for professional dashboard display.
+    # Verification is fully immune to dashes/spaces and will still match flawlessly!
+    raw_key = key.strip()
     
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute("INSERT INTO licenses (key, user_name, status, created_at, duration_days) VALUES (?, ?, 'Active', ?, ?)", 
-                 (clean_key, user_name, created_at, duration))
+                 (raw_key, user_name, created_at, duration))
         conn.commit()
         conn.close()
         return jsonify({"message": "License added successfully"}), 200
@@ -125,9 +125,11 @@ def add_license(key):
 @app.route('/admin/revoke/<key>', methods=['GET'])
 @require_admin
 def revoke_license(key):
+    import re
+    clean_key = re.sub(r"[\s\-]+", "", key).upper()
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("UPDATE licenses SET status='Revoked' WHERE key=?", (key,))
+    c.execute("UPDATE licenses SET status='Revoked' WHERE UPPER(REPLACE(REPLACE(key, '-', ''), ' ', ''))=?", (clean_key,))
     conn.commit()
     conn.close()
     return jsonify({"message": "License revoked"}), 200
@@ -135,9 +137,11 @@ def revoke_license(key):
 @app.route('/admin/activate/<key>', methods=['GET'])
 @require_admin
 def activate_license(key):
+    import re
+    clean_key = re.sub(r"[\s\-]+", "", key).upper()
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("UPDATE licenses SET status='Active' WHERE key=?", (key,))
+    c.execute("UPDATE licenses SET status='Active' WHERE UPPER(REPLACE(REPLACE(key, '-', ''), ' ', ''))=?", (clean_key,))
     conn.commit()
     conn.close()
     return jsonify({"message": "License activated"}), 200
@@ -145,9 +149,11 @@ def activate_license(key):
 @app.route('/admin/delete/<key>', methods=['GET'])
 @require_admin
 def delete_license(key):
+    import re
+    clean_key = re.sub(r"[\s\-]+", "", key).upper()
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("DELETE FROM licenses WHERE key=?", (key,))
+    c.execute("DELETE FROM licenses WHERE UPPER(REPLACE(REPLACE(key, '-', ''), ' ', ''))=?", (clean_key,))
     conn.commit()
     conn.close()
     return jsonify({"message": "License deleted"}), 200
@@ -168,7 +174,7 @@ def verify_license_post():
     
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT user_name, status, created_at, duration_days, hwid FROM licenses WHERE key=?", (user_key,))
+    c.execute("SELECT user_name, status, created_at, duration_days, hwid FROM licenses WHERE UPPER(REPLACE(REPLACE(key, '-', ''), ' ', ''))=?", (user_key,))
     row = c.fetchone()
     
     if not row:
@@ -192,7 +198,7 @@ def verify_license_post():
     # 3. Check / Bind Hardware ID (HWID)
     if not stored_hwid:
         # First activation: Bind the HWID!
-        c.execute("UPDATE licenses SET hwid=? WHERE key=?", (hwid, user_key))
+        c.execute("UPDATE licenses SET hwid=? WHERE UPPER(REPLACE(REPLACE(key, '-', ''), ' ', ''))=?", (hwid, user_key))
         stored_hwid = hwid
         
     if hwid and stored_hwid != hwid:
@@ -201,7 +207,7 @@ def verify_license_post():
         
     # 4. Update Last Login details in 12-hour format with AM/PM (e.g. 2026-05-17 11:07 AM)
     login_time = datetime.now().strftime("%Y-%m-%d %I:%M %p")
-    c.execute("UPDATE licenses SET last_login=? WHERE key=?", (login_time, user_key))
+    c.execute("UPDATE licenses SET last_login=? WHERE UPPER(REPLACE(REPLACE(key, '-', ''), ' ', ''))=?", (login_time, user_key))
     conn.commit()
     
     conn.close()
@@ -222,14 +228,14 @@ def deactivate_license_post():
     
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT hwid FROM licenses WHERE key=?", (user_key,))
+    c.execute("SELECT hwid FROM licenses WHERE UPPER(REPLACE(REPLACE(key, '-', ''), ' ', ''))=?", (user_key,))
     row = c.fetchone()
     
     if row:
         stored_hwid = row[0]
         if stored_hwid == hwid:
             # Unbind hardware ID so the user can activate on a new machine
-            c.execute("UPDATE licenses SET hwid=NULL WHERE key=?", (user_key,))
+            c.execute("UPDATE licenses SET hwid=NULL WHERE UPPER(REPLACE(REPLACE(key, '-', ''), ' ', ''))=?", (user_key,))
             conn.commit()
             conn.close()
             return jsonify({"status": "success", "message": "License deactivated successfully"}), 200
@@ -267,10 +273,14 @@ def check_update():
 # NEW: ENGINE UPDATE ROUTE - SERVE THE NATIVE COMPILED EXE
 @app.route('/api/v1/dist/autocontent_pro.exe', methods=['GET'])
 def download_exe():
-    dist_path = os.path.join(os.path.dirname(__file__), 'autocontent_pro.exe')
-    if os.path.exists(dist_path):
-        return send_file(dist_path), 200
-    return jsonify({"error": "Distribution file not found"}), 404
+    # 1. Search locally in multiple potential naming paths
+    for fname in ['autocontent_pro.exe', 'app.exe', 'dist/app.exe', 'dist/autocontent_pro.exe']:
+        dist_path = os.path.join(os.path.dirname(__file__), fname)
+        if os.path.exists(dist_path):
+            return send_file(dist_path, as_attachment=True, download_name='AutoContentPro.exe'), 200
+            
+    # 2. Robust Fallback: Redirect directly to the latest GitHub release package
+    return redirect("https://github.com/imsurajj/autocontent/releases/latest/download/app.exe")
 
 # NEW: AUTOMATED GITHUB WEBHOOK (CI/CD AUTO-SYNC & LIVE HOT-RELOAD)
 @app.route('/webhook/sync', methods=['POST'])

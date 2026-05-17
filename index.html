@@ -295,13 +295,13 @@
         <div id="license-banner" class="hidden shrink-0 border-b border-rose-500/20 bg-rose-950/20 px-10 py-3 flex items-center justify-between">
             <div class="flex items-center space-x-3">
                 <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-rose-500 shrink-0"></i>
-                <span class="text-[9px] font-black tracking-[0.2em] text-rose-400 uppercase">License expired or unactivated. Please activate to enable generation.</span>
+                <span class="text-[9px] font-black tracking-[0.2em] text-white uppercase">License expired or unactivated. Please activate to enable generation.</span>
             </div>
             <div class="flex items-center space-x-2">
-                <input type="text" id="license-banner-input" 
+                <input type="password" id="license-banner-input" 
                        placeholder="ENTER ACTIVATION KEY" 
                        onkeydown="if(event.key === 'Enter') verifyKeyBanner()"
-                       class="bg-[var(--input-bg)] border border-rose-500/30 px-3 py-1 text-main text-[9px] placeholder-rose-500/20 focus:border-rose-500 font-mono outline-none w-[180px] h-[26px] rounded-none uppercase">
+                       class="bg-[var(--input-bg)] border border-theme px-3 py-1 text-main text-[9px] placeholder-sub focus:border-accent font-mono outline-none w-[180px] h-[26px] rounded-none uppercase">
                 <button id="banner-verify-btn" onclick="verifyKeyBanner()" class="bg-rose-600 hover:bg-rose-500 text-white px-4 h-[26px] text-[8px] font-black uppercase tracking-widest transition-all">
                     Activate
                 </button>
