@@ -6,7 +6,7 @@
 AppId={{C7A9E2B1-4A5B-4E3F-8C7D-9E0A1B2C3D4E}
 AppName=AutoContent Pro
 AppVersion=2.0.0
-AppVerName=AutoContent Pro v2.0.0
+AppVerName=AutoContent Pro v2.1.1
 AppPublisher=AutoContent Pro Team
 AppPublisherURL=https://github.com/imsurajj/autocontent
 AppSupportURL=https://github.com/imsurajj/autocontent/issues

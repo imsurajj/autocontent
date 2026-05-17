@@ -197,6 +197,7 @@ class Api:
                         json.dump({"date": datetime.now().isoformat(), "key": user_key, "user": user_name}, f)
                     self.is_activated = True
                     # Update license settings info in UI safely using json.dumps to avoid quote breaks!
+                    self.window.evaluate_js("setActivation(true)")
                     self.window.evaluate_js(f"setLicenseInfo({json.dumps(user_key)}, {json.dumps(user_name)}, {json.dumps(hwid)}, true)")
                     return True
         except: pass
