@@ -240,7 +240,11 @@ def deactivate_license_post():
     
     if row:
         stored_hwid = row[0]
-        if stored_hwid == hwid:
+        sh = str(stored_hwid or "").strip()
+        ch = str(hwid or "").strip()
+        
+        # Robust matching: allow deactivation if no hwid is currently locked, or if it matches the request
+        if not sh or sh == ch:
             # Mark status as 'Revoked' so it instantly reflects as revoked on the admin dashboard
             c.execute("UPDATE licenses SET status='Revoked', hwid=NULL WHERE UPPER(REPLACE(REPLACE(key, '-', ''), ' ', ''))=?", (user_key,))
             conn.commit()

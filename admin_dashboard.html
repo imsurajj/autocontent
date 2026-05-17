@@ -393,9 +393,9 @@
             showToast("Key Copied to Clipboard");
         }
 
-        async function fetchLicenses() {
+        async function fetchLicenses(isAuto = false) {
             if (!ADMIN_KEY) return loginModal.classList.add('show');
-            refreshIcon.classList.add('animate-spin-custom');
+            if (!isAuto) refreshIcon.classList.add('animate-spin-custom');
             const listContainer = document.getElementById('license-list');
             try {
                 const response = await fetch(`${API_BASE}/admin/list`, { headers: getHeaders() });
@@ -518,7 +518,15 @@
         }
 
         applyTheme();
-        if (ADMIN_KEY) fetchLicenses(); else loginModal.classList.add('show');
+        if (ADMIN_KEY) {
+            fetchLicenses();
+            // Automatically poll the server every 8 seconds to keep dashboard 100% in sync without screen spin!
+            setInterval(() => {
+                if (ADMIN_KEY) fetchLicenses(true);
+            }, 8000);
+        } else {
+            loginModal.classList.add('show');
+        }
     </script>
 </body>
 </html>
