@@ -761,58 +761,87 @@
                 </div>
             </div>
 
-            <div class="flex-1 flex flex-col bg-black/10">
-                <!-- ROW: LICENSE KEY (with mask toggle) -->
-                <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center group bg-zinc-950/20">
-                    <div
-                        class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
-                        Active License Key</div>
-                    <div class="col-span-9 h-full flex items-center px-10 justify-between">
-                        <div class="flex items-center space-x-3 w-full">
-                            <input type="password" id="license-key-display"
-                                class="bg-transparent border-none outline-none text-xs text-main font-mono flex-1 select-all"
-                                value="" placeholder="ENTER LICENSE KEY TO ACTIVATE">
-                            <button onclick="toggleKeyVisibility()" class="text-sub hover:text-main transition-colors p-1 flex items-center" title="Toggle Visibility">
-                                <i id="eye-icon" data-lucide="eye-off" class="w-3.5 h-3.5"></i>
-                            </button>
-                            <button onclick="copyLicenseKey()" class="text-sub hover:text-main transition-colors p-1 flex items-center" title="Copy License Key">
-                                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+            <div class="flex-1 flex flex-col bg-black/10 relative overflow-y-auto">
+                <!-- ACTIVATED STATE (GRID) -->
+                <div id="license-activated-state" class="hidden flex flex-col">
+                    <!-- ROW: LICENSE KEY (with mask toggle) -->
+                    <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center group bg-zinc-950/20">
+                        <div
+                            class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
+                            Active License Key</div>
+                        <div class="col-span-9 h-full flex items-center px-10 justify-between">
+                            <div class="flex items-center space-x-3 w-full">
+                                <input type="password" id="license-key-display" readonly
+                                    class="bg-transparent border-none outline-none text-xs text-main font-mono flex-1 select-all"
+                                    value="">
+                                <button onclick="toggleKeyVisibility()" class="text-sub hover:text-main transition-colors p-1 flex items-center" title="Toggle Visibility">
+                                    <i id="eye-icon" data-lucide="eye-off" class="w-3.5 h-3.5"></i>
+                                </button>
+                                <button onclick="copyLicenseKey()" class="text-sub hover:text-main transition-colors p-1 flex items-center" title="Copy License Key">
+                                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ROW: USER/REGISTERED TO -->
+                    <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center group bg-zinc-950/20">
+                        <div
+                            class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
+                            Registered User</div>
+                        <div class="col-span-9 h-full flex items-center px-10">
+                            <span id="license-user-display" class="text-xs text-main uppercase font-bold tracking-widest">N/A</span>
+                        </div>
+                    </div>
+
+                    <!-- ROW: DEVICE IDENTIFIER -->
+                    <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center group bg-zinc-950/20">
+                        <div
+                            class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
+                            Hardware Lock ID</div>
+                        <div class="col-span-9 h-full flex items-center px-10 justify-between">
+                            <span id="license-hwid-display" class="text-xs text-sub font-mono select-all">N/A</span>
+                        </div>
+                    </div>
+
+                    <!-- ROW: LICENSE STATUS -->
+                    <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center group bg-zinc-950/20">
+                        <div
+                            class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
+                            License Status</div>
+                        <div class="col-span-9 h-full flex items-center px-10 justify-between">
+                            <span id="license-status-badge" class="border border-rose-500/30 text-rose-500 text-[8px] font-black px-2 py-0.5 rounded-sm tracking-widest uppercase bg-rose-500/5">Unactivated</span>
+                            <button id="license-action-btn" onclick="handleLicenseAction()"
+                                class="bg-rose-600 hover:bg-rose-500 text-white px-5 h-[28px] text-[8px] font-black uppercase tracking-widest transition-all rounded-sm">
+                                Deactivate
                             </button>
                         </div>
                     </div>
                 </div>
 
-                <!-- ROW: USER/REGISTERED TO -->
-                <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center group bg-zinc-950/20">
-                    <div
-                        class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
-                        Registered User</div>
-                    <div class="col-span-9 h-full flex items-center px-10">
-                        <span id="license-user-display" class="text-xs text-main uppercase font-bold tracking-widest">N/A</span>
+                <!-- UNACTIVATED STATE (DEVELOPER CONTACT ROWS) -->
+                <div id="license-unactivated-state" class="flex flex-col">
+                    <!-- ROW: WORKSTATION STATUS -->
+                    <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center bg-zinc-950/20">
+                        <div class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
+                            Workstation Status
+                        </div>
+                        <div class="col-span-9 h-full flex items-center px-10">
+                            <span class="border border-rose-500/30 text-rose-500 text-[8px] font-black px-2 py-0.5 rounded-sm tracking-widest uppercase bg-rose-500/5">
+                                Activation Required
+                            </span>
+                        </div>
                     </div>
-                </div>
 
-                <!-- ROW: DEVICE IDENTIFIER -->
-                <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center group bg-zinc-950/20">
-                    <div
-                        class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
-                        Hardware Lock ID</div>
-                    <div class="col-span-9 h-full flex items-center px-10 justify-between">
-                        <span id="license-hwid-display" class="text-xs text-sub font-mono select-all">N/A</span>
-                    </div>
-                </div>
-
-                <!-- ROW: LICENSE STATUS -->
-                <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center group bg-zinc-950/20">
-                    <div
-                        class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
-                        License Status</div>
-                    <div class="col-span-9 h-full flex items-center px-10 justify-between">
-                        <span id="license-status-badge" class="border border-rose-500/30 text-rose-500 text-[8px] font-black px-2 py-0.5 rounded-sm tracking-widest uppercase bg-rose-500/5">Unactivated</span>
-                        <button id="license-action-btn" onclick="handleLicenseAction()"
-                            class="bg-blue-600 hover:bg-blue-500 text-white px-5 h-[28px] text-[8px] font-black uppercase tracking-widest transition-all">
-                            Activate System
-                        </button>
+                    <!-- ROW: CONTACT DEVELOPER -->
+                    <div class="grid grid-cols-12 border-b border-theme h-[48px] items-center bg-zinc-950/20">
+                        <div class="col-span-3 h-full bg-white/5 border-r border-theme flex items-center px-10 text-[9px] font-black text-sub uppercase tracking-widest">
+                            Contact Developer
+                        </div>
+                        <div class="col-span-9 h-full flex items-center px-10 justify-between">
+                            <span class="text-xs text-main font-mono select-all">imsurajj@gmail.com</span>
+                            <span class="text-[9px] font-bold text-sub uppercase tracking-widest mr-4">Enter key in top banner to activate</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1097,7 +1126,13 @@
             const statusBadge = document.getElementById('license-status-badge');
             const actionBtn = document.getElementById('license-action-btn');
             
+            const activatedState = document.getElementById('license-activated-state');
+            const unactivatedState = document.getElementById('license-unactivated-state');
+            
             if (active) {
+                if (activatedState) activatedState.classList.remove('hidden');
+                if (unactivatedState) unactivatedState.classList.add('hidden');
+                
                 keyDisplay.value = key;
                 keyDisplay.setAttribute('readonly', 'true');
                 keyDisplay.placeholder = "";
@@ -1111,6 +1146,9 @@
                 actionBtn.className = "bg-rose-600 hover:bg-rose-500 text-white px-5 h-[28px] text-[8px] font-black uppercase tracking-widest transition-all rounded-sm";
                 actionBtn.disabled = false;
             } else {
+                if (activatedState) activatedState.classList.add('hidden');
+                if (unactivatedState) unactivatedState.classList.remove('hidden');
+                
                 keyDisplay.value = "";
                 keyDisplay.removeAttribute('readonly');
                 keyDisplay.placeholder = "ENTER LICENSE KEY TO ACTIVATE";
@@ -1119,10 +1157,6 @@
                 
                 statusBadge.innerText = "Unactivated";
                 statusBadge.className = "border border-rose-500/30 text-rose-500 text-[8px] font-black px-2 py-0.5 rounded-sm tracking-widest uppercase bg-rose-500/5";
-                
-                actionBtn.innerText = "Activate System";
-                actionBtn.className = "bg-blue-600 hover:bg-blue-500 text-white px-5 h-[28px] text-[8px] font-black uppercase tracking-widest transition-all rounded-sm";
-                actionBtn.disabled = false;
             }
         }
 

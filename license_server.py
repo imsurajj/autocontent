@@ -142,10 +142,11 @@ def activate_license(key):
     clean_key = re.sub(r"[\s\-]+", "", key).upper()
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("UPDATE licenses SET status='Active' WHERE UPPER(REPLACE(REPLACE(key, '-', ''), ' ', ''))=?", (clean_key,))
+    # Reset status back to Active and clear any hardware locks so they can activate on a new device
+    c.execute("UPDATE licenses SET status='Active', hwid=NULL WHERE UPPER(REPLACE(REPLACE(key, '-', ''), ' ', ''))=?", (clean_key,))
     conn.commit()
     conn.close()
-    return jsonify({"message": "License activated"}), 200
+    return jsonify({"message": "License activated and hardware lock reset"}), 200
 
 @app.route('/admin/delete/<key>', methods=['GET'])
 @require_admin
@@ -185,7 +186,10 @@ def verify_license_post():
     user_name, status, created_at, duration_days, stored_hwid = row
     
     # 1. Check status
-    if status != 'Active':
+    if status == 'Deactivated':
+        conn.close()
+        return jsonify({"status": "error", "message": "License has been deactivated and cannot be reused"}), 403
+    elif status != 'Active':
         conn.close()
         return jsonify({"status": "error", "message": "License has been revoked"}), 403
         
@@ -237,11 +241,11 @@ def deactivate_license_post():
     if row:
         stored_hwid = row[0]
         if stored_hwid == hwid:
-            # Unbind hardware ID so the user can activate on a new machine
-            c.execute("UPDATE licenses SET hwid=NULL WHERE UPPER(REPLACE(REPLACE(key, '-', ''), ' ', ''))=?", (user_key,))
+            # Mark status as 'Revoked' so it instantly reflects as revoked on the admin dashboard
+            c.execute("UPDATE licenses SET status='Revoked', hwid=NULL WHERE UPPER(REPLACE(REPLACE(key, '-', ''), ' ', ''))=?", (user_key,))
             conn.commit()
             conn.close()
-            return jsonify({"status": "success", "message": "License deactivated successfully"}), 200
+            return jsonify({"status": "success", "message": "License deactivated and revoked successfully"}), 200
             
     conn.close()
     return jsonify({"status": "error", "message": "Invalid deactivation request"}), 400

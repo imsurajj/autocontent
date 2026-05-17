@@ -405,13 +405,29 @@
                 data.licenses.forEach(lic => {
                     const isChecked = lic.status === 'Active' ? 'checked' : '';
                     const action = lic.status === 'Active' ? 'revoke' : 'activate';
-                    const statusText = lic.status === 'Active' ? 'ACTIVE' : 'REVOKED';
-                    const statusColor = lic.status === 'Active' ? 'text-blue-500' : 'text-rose-500';
+                    
+                    let statusText = 'REVOKED';
+                    let statusColor = 'text-rose-500';
+                    if (lic.status === 'Active') {
+                        statusText = 'ACTIVE';
+                        statusColor = 'text-blue-500';
+                    } else if (lic.status === 'Deactivated') {
+                        statusText = 'DEACT';
+                        statusColor = 'text-amber-500';
+                    }
+
                     const created = new Date(lic.created_at);
                     const expiry = new Date(created.getTime() + (lic.duration_days * 24 * 60 * 60 * 1000));
                     const diffDays = Math.ceil((expiry - new Date()) / (1000 * 60 * 60 * 24));
                     const daysLeft = diffDays > 0 ? `${diffDays} days` : 'Expired';
                     const daysColor = diffDays <= 5 ? 'text-rose-500 font-bold' : 'text-sub';
+
+                    // Reset action button: only visible if status is not Active
+                    const resetBtnHtml = lic.status !== 'Active' ? `
+                        <button onclick="resetActivation('${lic.key}')" onmouseenter="showTooltip(event, 'Reset Activation / HWID')" onmouseleave="hideTooltip()" class="text-amber-500 hover:text-amber-400 transition-colors p-1 flex items-center" title="Reset HWID / Status">
+                            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                        </button>
+                    ` : `<div class="w-[22px]"></div>`;
 
                     listContainer.innerHTML += `
                         <div class="grid grid-cols-12 items-center hover:bg-[var(--row-hover)] transition-colors group border-b border-theme">
@@ -426,7 +442,8 @@
                                     <input type="checkbox" ${isChecked} onchange="toggleStatus('${lic.key}', '${action}')">
                                     <span class="slider"></span>
                                 </label>
-                                <span class="text-[8px] font-bold tracking-widest ${statusColor} w-10 text-center">${statusText}</span>
+                                <span class="text-[8px] font-bold tracking-widest ${statusColor} w-12 text-center">${statusText}</span>
+                                ${resetBtnHtml}
                             </div>
                             <div class="col-span-1 py-4 px-6 flex items-center justify-center">
                                 <button onclick="deleteLicense('${lic.key}')" class="text-rose-500 hover:text-rose-400 transition-colors">
@@ -448,6 +465,17 @@
                 showToast(`License ${action === 'revoke' ? 'Revoked' : 'Activated'}`);
                 fetchLicenses(); 
             } catch (error) { showToast("Operation Failed", true); }
+        }
+
+        function resetActivation(key) {
+            showConfirm(`Are you sure you want to reset activation & clear hardware lock for license ${key}?`, async () => {
+                try {
+                    const response = await fetch(`${API_BASE}/admin/activate/${key}`, { headers: getHeaders() });
+                    if (!checkAuth(response.status)) return;
+                    showToast("Activation Reset Successful");
+                    fetchLicenses();
+                } catch (error) { showToast("Reset Failed", true); }
+            });
         }
 
         function deleteLicense(key) {
