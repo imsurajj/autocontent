@@ -30,7 +30,7 @@ USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 SETTINGS_FILE = USER_DATA_DIR / "settings.json"
 LICENSE_FILE = USER_DATA_DIR / "license.key"
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.1.1"
 LICENSE_API_URL = "https://imsuraj.pythonanywhere.com"
 
 def check_and_apply_patches():

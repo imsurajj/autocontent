@@ -311,25 +311,54 @@ def github_webhook():
         import subprocess
         import shutil
         
-        repo_dir = os.path.dirname(__file__)
+        running_dir = os.path.dirname(__file__)
+        repo_dir = running_dir
         
-        # 1. Pull the latest commits from the private repository
+        # Robust check: If running directory is not a git repo, auto-detect standard sibling directories
+        if not os.path.exists(os.path.join(repo_dir, ".git")):
+            parent_dir = os.path.dirname(running_dir)
+            possible_paths = [
+                os.path.join(parent_dir, "autocontent"),
+                os.path.join(parent_dir, "AutoContent"),
+                parent_dir
+            ]
+            for path in possible_paths:
+                if os.path.exists(os.path.join(path, ".git")):
+                    repo_dir = path
+                    break
+        
+        # 1. Pull the latest commits from the resolved git repository
         result = subprocess.run(["git", "-C", repo_dir, "pull"], capture_output=True, text=True, check=True)
         
-        # 2. Automatically copy updated server logic over to running WSGI target
-        src = os.path.join(repo_dir, "license_server.py")
-        dest = os.path.join(repo_dir, "flask_app.py")
-        if os.path.exists(src):
-            shutil.copy2(src, dest)
+        # 2. Automatically copy updated server logic and UI templates over to running WSGI target
+        if repo_dir != running_dir:
+            for fname in ["license_server.py", "index.html", "admin_dashboard.html"]:
+                src = os.path.join(repo_dir, fname)
+                dest = os.path.join(running_dir, "flask_app.py" if fname == "license_server.py" else fname)
+                if os.path.exists(src):
+                    shutil.copy2(src, dest)
+        else:
+            # If running inside git folder directly, just ensure license_server.py is copied to flask_app.py
+            src = os.path.join(repo_dir, "license_server.py")
+            dest = os.path.join(running_dir, "flask_app.py")
+            if os.path.exists(src):
+                shutil.copy2(src, dest)
             
         # 3. Touch the WSGI config file to trigger a silent, hot-reload of PythonAnywhere!
+        # Search in standard home folder formats
         wsgi_file = "/var/www/imsuraj_pythonanywhere_com_wsgi.py"
         if os.path.exists(wsgi_file):
             os.utime(wsgi_file, None)
+        else:
+            # Fallback check if username is different
+            username = os.path.basename(os.path.dirname(running_dir))
+            alt_wsgi = f"/var/www/{username}_pythonanywhere_com_wsgi.py"
+            if os.path.exists(alt_wsgi):
+                os.utime(alt_wsgi, None)
             
         return jsonify({
             "status": "success", 
-            "message": "Git pull succeeded, server copied, and hot-reload triggered successfully!",
+            "message": "Git pull succeeded, all templates and scripts copied, and hot-reload triggered successfully!",
             "git_output": result.stdout
         }), 200
     except Exception as e:
