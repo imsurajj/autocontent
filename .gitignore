@@ -1,67 +1,41 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# PyInstaller
-*.spec
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
 
-# Installer Artifacts
-Output/
-_istemp/
+# testing
+/coverage
 
-# App Specific (Private Data)
-license.key
-licenses.db
-settings.json
-# settings.json is user-specific and generated at runtime
-output_pdfs/
-titles.md
+# next.js
+/.next/
+/out/
 
-# Environment
-.env
-.env.*
+# production
+/build
 
-# Appwrite function builds and temp
-appwrite_functions/**/build/
-appwrite_functions/**/__pycache__/
-appwrite_functions/**/dist/
-
-# Logs
-*.log
-
-# Secrets
-secrets.json
-credentials.json
-*.pem
-*.key
-
-# User data (local app cache)
-AppData/AutoContent Pro/
-%APPDATA%/AutoContent Pro/
-# OS
+# misc
 .DS_Store
-Thumbs.db
+*.pem
 
-# IDEs
-.vscode/
-.idea/
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts

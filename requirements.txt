@@ -1,5 +1,0 @@
-fpdf2
-python-dotenv
-markdown
-pywebview
-packaging
