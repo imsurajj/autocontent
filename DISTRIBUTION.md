@@ -18,7 +18,7 @@ Goal: ship a single installer that users run once to install the app. After that
 Steps
 - Build the distributable app binary (PyInstaller recommended for Python):
   - `pip install pyinstaller`
-  - `pyinstaller --noconsole --onefile --icon=image/icon.ico app.py`
+  - `pyinstaller --noconsole --onefile --icon=image/logo.ico app.py`
   - Take the produced `dist/app.exe` as the application binary.
 - Create a professional installer with Inno Setup (recommended):
   - Use `installer.iss` to produce `AutoContent_Pro_Setup_vX.Y.exe`.

@@ -1,4 +1,4 @@
-﻿import os
+import os
 import re
 import json
 from datetime import datetime, timezone
@@ -76,7 +76,31 @@ def main(context):
             docs = getattr(response, "documents", [])
 
         if not docs:
-            # Fallback by document ID
+            # Fallback 1: Try lowercase search
+            try:
+                r_low = databases.list_documents(
+                    database_id=database_id,
+                    collection_id=collection_id,
+                    queries=[Query.equal("licenseKey", clean_key.lower())]
+                )
+                docs = r_low.get("documents", []) if isinstance(r_low, dict) else getattr(r_low, "documents", [])
+            except Exception:
+                pass
+
+        if not docs:
+            # Fallback 2: Try uppercase search
+            try:
+                r_up = databases.list_documents(
+                    database_id=database_id,
+                    collection_id=collection_id,
+                    queries=[Query.equal("licenseKey", clean_key.upper())]
+                )
+                docs = r_up.get("documents", []) if isinstance(r_up, dict) else getattr(r_up, "documents", [])
+            except Exception:
+                pass
+
+        if not docs:
+            # Fallback 3: Document ID match
             try:
                 single_doc = databases.get_document(database_id, collection_id, clean_key)
                 docs = [single_doc]
@@ -117,25 +141,24 @@ def main(context):
             val = doc_dict.get(name, default_val)
         return val
 
-    # 6. Extract fields safely
-    # Prefer `userName` (display name) if present, otherwise fall back to legacy `userId`.
     user_name = get_field("userName", None) or get_field("userId", "Active User")
     organization = get_field("organization", "")
-    
-    is_active = get_field("isActive", False)
-    if str(is_active).strip().lower() in ["true", "1", "yes", "active"]:
-        is_active = True
-    elif str(is_active).strip().lower() in ["false", "0", "no", "inactive"]:
-        is_active = False
+
+    is_active = get_field("isActive", None)
+    if is_active is None:
+        status = str(get_field("status", "")).strip().lower()
+        is_active = (status in ["active", "true", "1"])
     else:
-        is_active = False # Safe fallback if not matched
-    
+        if isinstance(is_active, bool):
+            pass
+        elif str(is_active).strip().lower() in ["true", "1", "yes", "active"]:
+            is_active = True
+        else:
+            is_active = False
+
     expires_at = get_field("expiresAt")
     
-    stored_hwid = get_field("hardwareId")
-    if stored_hwid is None:
-        stored_hwid = get_field("hwid")
-        
+    stored_hwid = get_field("hardwareId") or get_field("hwid", "")
     if stored_hwid in [None, "NULL", "null", "None", ""]:
         stored_hwid = ""
     else:
@@ -149,7 +172,10 @@ def main(context):
                     database_id=database_id,
                     collection_id=collection_id,
                     document_id=doc_id,
-                    data={"isActive": False, "hardwareId": ""}
+                    data={
+                        "isActive": False,
+                        "hardwareId": ""
+                    }
                 )
                 return context.res.json({"status": "success", "message": "License deactivated successfully."}, 200)
             except Exception as e:
@@ -179,7 +205,9 @@ def main(context):
                 database_id=database_id,
                 collection_id=collection_id,
                 document_id=doc_id,
-                data={"hardwareId": hwid}
+                data={
+                    "hardwareId": hwid
+                }
             )
             stored_hwid = hwid
         except Exception as e:

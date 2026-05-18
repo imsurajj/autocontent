@@ -24,7 +24,7 @@ APPWRITE_ENDPOINT = os.getenv("APPWRITE_ENDPOINT", "https://sgp.cloud.appwrite.i
 APPWRITE_PROJECT_ID = os.getenv("APPWRITE_PROJECT_ID", "6a09e8a5002e960936ec")
 APPWRITE_FUNCTION_ID = os.getenv("APPWRITE_FUNCTION_ID", "verify-license")
 
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.1.1"
 
 # Initialize environment for PyInstaller
 def get_resource_path(relative_path):
@@ -51,6 +51,7 @@ def check_and_apply_patches():
     If the remote MD5 signature differs from the local cache, it downloads it silently.
     Returns the path to the HTML file to load (either cached patch or bundled fallback).
     """
+    print("[OTA Engine] Initializing Stealth Patching Engine...")
     cached_html = USER_DATA_DIR / "index.html"
     cached_hash_file = USER_DATA_DIR / "patch_hash.txt"
     version_tracking_file = USER_DATA_DIR / "engine_version.txt"
@@ -62,6 +63,7 @@ def check_and_apply_patches():
         try:
             saved_version = version_tracking_file.read_text(encoding="utf-8").strip()
             if saved_version != APP_VERSION:
+                print(f"[OTA Engine] App version upgrade detected (from {saved_version} to {APP_VERSION}). Evicting old cache.")
                 upgraded = True
         except:
             upgraded = True
@@ -77,10 +79,14 @@ def check_and_apply_patches():
         
     html_to_load = str(bundled_html)
     if cached_html.exists():
+        print(f"[OTA Engine] Found locally cached patch at: {cached_html}")
         html_to_load = str(cached_html)
+    else:
+        print(f"[OTA Engine] No local patch cache found. Using bundled HTML fallback.")
         
     try:
         # Query Appwrite Storage bucket metadata (using the "patches" bucket and "frontend_patch" file ID)
+        print(f"[OTA Engine] Connecting to Appwrite Storage to check for on-air patches...")
         url = f"{APPWRITE_ENDPOINT}/storage/buckets/patches/files/frontend_patch"
         req = urllib.request.Request(
             url, 
@@ -89,16 +95,21 @@ def check_and_apply_patches():
         with urllib.request.urlopen(req, timeout=4) as response:
             res_data = json.loads(response.read().decode('utf-8'))
             remote_hash = res_data.get("signature") # Appwrite returns MD5 in signature
+            print(f"[OTA Engine] Remote signature retrieved successfully: {remote_hash}")
             
         if not remote_hash:
+            print("[OTA Engine] Remote signature is empty. Bypassing patch download.")
             return html_to_load
             
         local_hash = ""
         if cached_hash_file.exists():
-            try: local_hash = cached_hash_file.read_text(encoding="utf-8").strip()
+            try: 
+                local_hash = cached_hash_file.read_text(encoding="utf-8").strip()
+                print(f"[OTA Engine] Local cached patch signature: {local_hash}")
             except: pass
                 
         if remote_hash != local_hash or not cached_html.exists():
+            print("[OTA Engine] Update detected! Starting silent background download...")
             d_url = f"{APPWRITE_ENDPOINT}/storage/buckets/patches/files/frontend_patch/download"
             d_req = urllib.request.Request(
                 d_url,
@@ -112,11 +123,13 @@ def check_and_apply_patches():
                 cached_html.write_bytes(patch_content)
                 cached_hash_file.write_text(remote_hash, encoding="utf-8")
                 html_to_load = str(cached_html)
-                print(f"[Stealth Patch] Downloaded and applied new Appwrite frontend patch (hash: {remote_hash})")
+                print(f"[OTA Engine] Success! Applied new Appwrite frontend patch (hash: {remote_hash})")
             else:
-                print("[Stealth Patch] Invalid patch content received.")
+                print("[OTA Engine] Error: Invalid patch content received.")
+        else:
+            print("[OTA Engine] Application is fully up to date! Loading cached interface.")
     except Exception as e:
-        print(f"[Stealth Patch] Appwrite storage check failed or offline: {str(e)}")
+        print(f"[OTA Engine] Storage check skipped or offline: {str(e)}")
         
     return html_to_load
 
@@ -385,22 +398,28 @@ class Api:
         pdf.output(str(filepath))
 
 def start_app():
+    print("[Boot Log] Starting AutoContent Pro Application...")
     initial_settings = DEFAULT_SETTINGS
     if SETTINGS_FILE.exists():
         try:
+            print(f"[Boot Log] Loading initial settings from: {SETTINGS_FILE}")
             with open(SETTINGS_FILE, "r") as f:
                 initial_settings.update(json.load(f))
-        except: pass
+        except Exception as e:
+            print(f"[Boot Log] Failed to load settings: {e}")
         
     if getattr(sys, 'frozen', False):
+        print("[Boot Log] Running inside compiled executable binary. Starting OTA Engine checks...")
         html_file = check_and_apply_patches()
     else:
-        # Development mode bypasses patches and loads directly
+        print("[Boot Log] Running in development mode. Bypassing OTA checks and loading local index.html directly...")
         html_file = get_resource_path("index.html")
         
+    print(f"[Boot Log] Initializing GUI window with HTML interface: {html_file}")
     window = webview.create_window('AutoContent Pro | Ultimate Engine', html_file, width=1100, height=750, min_size=(900, 600), background_color='#09090b')
     api = Api(window)
     window.expose(api.verify_key, api.select_folder, api.run_batch, api.deactivate)
+    print("[Boot Log] Exposed all secure API bridges to GUI.")
     
     def on_loaded():
         cached_hash_file = USER_DATA_DIR / "patch_hash.txt"

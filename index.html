@@ -501,7 +501,7 @@
             class="hidden shrink-0 border-b border-rose-500/20 bg-rose-950/20 px-10 py-3 flex items-center">
             <div class="flex items-center space-x-3 w-full">
                 <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-rose-500 shrink-0"></i>
-                <span class="text-[9px] font-black tracking-[0.2em] text-white uppercase">License expired or
+                <span id="license-banner-text" class="text-[9px] font-black tracking-[0.2em] text-white uppercase">License expired or
                     unactivated. Please activate to enable generation.</span>
             </div>
         </div>
@@ -830,7 +830,7 @@
                             Contact Developer
                         </div>
                         <div class="col-span-9 h-full flex items-center px-10 justify-between">
-                            <span class="text-xs text-main font-mono select-all">imsurajj@gmail.com</span>
+                            <span class="text-xs text-main font-mono select-all">iamsurajbro946@gmail.com</span>
                             <span class="text-[9px] font-bold text-sub uppercase tracking-widest mr-4">Support & Assistance</span>
                         </div>
                     </div>
@@ -1096,8 +1096,9 @@
             });
         }
 
-        function setActivation(active) {
+        function setActivation(active, deactivatedByManual = false) {
             const banner = document.getElementById('license-banner');
+            const bannerText = document.getElementById('license-banner-text');
             const runBtn = document.getElementById('run-btn');
             window.isActivated = active;
 
@@ -1108,7 +1109,14 @@
                     runBtn.classList.remove('opacity-50', 'cursor-not-allowed');
                 }
             } else {
-                if (banner) banner.classList.remove('hidden');
+                if (banner) {
+                    banner.classList.remove('hidden');
+                    if (deactivatedByManual) {
+                        bannerText.innerText = "LICENSE DEACTIVATED. CONTACT DEVELOPER FOR REACTIVATION.";
+                    } else {
+                        bannerText.innerText = "LICENSE EXPIRED OR UNACTIVATED. PLEASE ACTIVATE TO ENABLE GENERATION.";
+                    }
+                }
                 if (runBtn) {
                     runBtn.disabled = true;
                     runBtn.classList.add('opacity-50', 'cursor-not-allowed');
@@ -1124,7 +1132,7 @@
                 // If activated, let verify_key or initial startup handle the grid details
             } else {
                 // If deactivated, reset grid details and apply correct visibility to action buttons
-                setLicenseInfo('', '', '', hwid || 'N/A', false);
+                setLicenseInfo('', '', '', hwid || 'N/A', false, deactivatedByManual);
             }
             
             updateSidebarColors();
@@ -1143,7 +1151,7 @@
             const res = await pywebview.api.deactivate();
             if (res) {
                 updateLog("Application deactivated. License removed.", "text-rose-400");
-                setActivation(false);
+                setActivation(false, true);
                 showToast("Hardware Deactivated", true);
             }
         }
@@ -1193,7 +1201,7 @@
             });
         }
 
-        function setLicenseInfo(key, user, org, hwid, active) {
+        function setLicenseInfo(key, user, org, hwid, active, deactivatedByManual = false) {
             const keyDisplay = document.getElementById('license-key-display');
             const userDisplay = document.getElementById('license-user-display');
             const orgDisplay = document.getElementById('license-org-display');
@@ -1241,7 +1249,13 @@
                 keyDisplay.value = "";
                 keyDisplay.removeAttribute('readonly');
                 keyDisplay.type = 'text';
-                keyDisplay.placeholder = "ENTER LICENSE KEY TO ACTIVATE";
+                
+                if (deactivatedByManual) {
+                    keyDisplay.placeholder = "CONTACT DEVELOPER FOR REACTIVATION";
+                } else {
+                    keyDisplay.placeholder = "ENTER LICENSE KEY TO ACTIVATE";
+                }
+                
                 if (userDisplay) {
                     userDisplay.innerText = "N/A";
                     userDisplay.className = 'text-[11px] text-main font-bold tracking-widest';
@@ -1254,8 +1268,13 @@
                 }
                 hwidDisplay.innerText = hwid;
                 
-                statusBadge.innerText = "Activation Required";
-                statusBadge.className = "border border-rose-500/30 text-rose-500 text-[8px] font-black px-2 py-0.5 rounded-sm tracking-widest uppercase bg-rose-500/5";
+                if (deactivatedByManual) {
+                    statusBadge.innerText = "DEACTIVATED - CONTACT DEVELOPER";
+                    statusBadge.className = "border border-rose-500 text-rose-500 text-[8px] font-black px-2 py-0.5 rounded-sm tracking-widest uppercase bg-rose-500/10";
+                } else {
+                    statusBadge.innerText = "Activation Required";
+                    statusBadge.className = "border border-rose-500/30 text-rose-500 text-[8px] font-black px-2 py-0.5 rounded-sm tracking-widest uppercase bg-rose-500/5";
+                }
                 
                 if (activateBtn) {
                     activateBtn.classList.remove('hidden');

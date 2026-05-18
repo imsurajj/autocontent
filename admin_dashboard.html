@@ -452,24 +452,29 @@
                     const daysColor = diffDays <= 5 ? 'text-rose-500 font-bold' : 'text-sub';
                     const docId = lic.$id;
 
-                    let statusText = 'REVOKED', statusColor = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
-                    let actionIconHtml = `<button onclick="toggleStatus('${docId}','Active')" onmouseenter="showTooltip(event,'Activate & Reset HWID')" onmouseleave="hideTooltip()" class="text-emerald-500 hover:text-emerald-400 p-1.5 transition-colors"><i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i></button>`;
+                    const isDocActive = (lic.isActive === true);
+                    const hasHwid = (lic.hardwareId && lic.hardwareId.trim() !== "");
 
-                    if (lic.status === 'Active') {
+                    let statusText = 'REVOKED', statusColor = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+                    let actionIconHtml = `<button onclick="toggleStatus('${docId}', true)" onmouseenter="showTooltip(event,'Activate & Reset HWID')" onmouseleave="hideTooltip()" class="text-emerald-500 hover:text-emerald-400 p-1.5 transition-colors"><i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i></button>`;
+
+                    if (isDocActive) {
                         statusText = 'ACTIVE';
                         statusColor = 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-                        actionIconHtml = `<button onclick="toggleStatus('${docId}','Revoked')" onmouseenter="showTooltip(event,'Revoke License')" onmouseleave="hideTooltip()" class="text-rose-500 hover:text-rose-400 p-1.5 transition-colors"><i data-lucide="shield-off" class="w-3.5 h-3.5"></i></button>`;
-                    } else if (lic.status === 'Deactivated') {
+                        actionIconHtml = `<button onclick="toggleStatus('${docId}', false)" onmouseenter="showTooltip(event,'Revoke License')" onmouseleave="hideTooltip()" class="text-rose-500 hover:text-rose-400 p-1.5 transition-colors"><i data-lucide="shield-off" class="w-3.5 h-3.5"></i></button>`;
+                    } else if (!isDocActive && !hasHwid) {
                         statusText = 'DEACT';
                         statusColor = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
                     }
+
+                    const displayName = lic.userName || lic.userId || lic.user_name || 'Active User';
 
                     listContainer.innerHTML += `
                         <div class="grid grid-cols-12 items-center hover:bg-[var(--row-hover)] transition-colors group border-b border-theme">
                             <div class="col-span-2 py-4 px-6 border-r border-theme font-mono text-[11px] tracking-tight">
                                 <span class="key-text truncate block text-main" onmouseenter="showTooltip(event,'Click to copy')" onmouseleave="hideTooltip()" onclick="copyToClipboard('${docId}')">${docId}</span>
                             </div>
-                            <div class="col-span-2 py-4 px-6 border-r border-theme text-[11px] text-sub truncate">${lic.user_name || ''}</div>
+                            <div class="col-span-2 py-4 px-6 border-r border-theme text-[11px] text-sub truncate">${displayName}</div>
                             <div class="col-span-2 py-4 px-6 border-r border-theme text-center text-[11px] ${daysColor}">${daysLeft}</div>
                             <div class="col-span-3 py-4 px-6 border-r border-theme text-center text-[11px] text-sub font-mono">${lic.last_login || 'Never'}</div>
                             <div class="col-span-2 py-4 px-6 border-r border-theme flex items-center justify-center">
@@ -501,12 +506,15 @@
             finally { refreshIcon.classList.remove('animate-spin-custom'); }
         }
 
-        async function toggleStatus(docId, newStatus) {
+        async function toggleStatus(docId, shouldActivate) {
             try {
-                const updateData = { status: newStatus };
-                if (newStatus === 'Active') updateData.hwid = '';
+                const updateData = { 
+                    isActive: shouldActivate,
+                    hardwareId: ''
+                };
+
                 await databases.updateDocument(AW_DB, AW_COL, docId, updateData);
-                showToast(`License ${newStatus === 'Revoked' ? 'Revoked' : 'Activated & HWID Reset'}`);
+                showToast(`License ${shouldActivate ? 'Activated & HWID Reset' : 'Revoked'}`);
                 fetchLicenses();
             } catch (error) { showToast("Operation Failed: " + error.message, true); }
         }

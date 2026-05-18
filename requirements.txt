@@ -1,6 +1,5 @@
 fpdf2
 python-dotenv
 markdown
-customtkinter
+pywebview
 packaging
-watchdog

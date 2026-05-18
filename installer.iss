@@ -2,9 +2,9 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "AutoContent Pro"
-#define MyAppVersion "1.0"
-#define MyAppPublisher "Your Company Name"
-#define MyAppURL "https://yourwebsite.com"
+#define MyAppVersion "2.1.1"
+#define MyAppPublisher "Auto Content By Suraj"
+#define MyAppURL "https://github.com/imsurajj"
 #define MyAppExeName "app.exe"
 
 [Setup]
@@ -23,13 +23,16 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 ; Output location for the installer
 OutputDir=.\Output
-OutputBaseFilename=AutoContent_Pro_Setup_v1.0
+OutputBaseFilename=AutoContent_Pro_Setup_v2.1.1
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+ShowLanguageDialog=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
+Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
